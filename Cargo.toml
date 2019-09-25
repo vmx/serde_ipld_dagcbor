@@ -17,6 +17,7 @@ travis-ci = { repository = "pyfisch/cbor" }
 maintenance = { status = "passively-maintained" }
 
 [dependencies]
+cid = { version = "0.7.0", features = ["serde-codec"] }
 half = "1.2.0"
 serde = { version = "1.0.14", default-features = false }
 
@@ -30,3 +31,7 @@ default = ["std"]
 alloc = ["serde/alloc"]
 std = ["serde/std" ]
 unsealed_read_write = []
+
+[patch.crates-io]
+multihash = { git = "https://github.com/multiformats/rust-multihash", branch = "next" }
+cid = { git = "https://github.com/multiformats/rust-cid", branch = "serde-as-bytes" }

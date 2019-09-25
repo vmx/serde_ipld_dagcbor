@@ -366,3 +366,6 @@ pub use crate::ser::to_writer;
 #[cfg(feature = "std")]
 #[doc(inline)]
 pub use crate::value::Value;
+
+/// The CBOR tag that is used for CIDs.
+const CBOR_TAGS_CID: u8 = 42;

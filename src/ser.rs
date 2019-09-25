@@ -8,10 +8,16 @@ pub use crate::write::IoWrite;
 pub use crate::write::{SliceWrite, Write};
 
 use crate::error::{Error, Result};
+use crate::CBOR_TAGS_CID;
+use cid::serde::CID_SERDE_NEWTYPE_STRUCT_NAME;
 use half::f16;
 use serde::ser::{self, Serialize};
+use std::convert::TryFrom;
 #[cfg(feature = "std")]
 use std::io;
+
+const MAJOR_TYPE_BYTES: u8 = 2;
+const MAJOR_TYPE_TAG: u8 = 6;
 
 /// Serializes a value to a vector.
 #[cfg(any(feature = "std", feature = "alloc"))]
@@ -399,11 +405,16 @@ where
     }
 
     #[inline]
-    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
+    fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + ser::Serialize,
     {
-        value.serialize(self)
+        if name == CID_SERDE_NEWTYPE_STRUCT_NAME {
+            let mut cid_serializer = CidSerializer(self);
+            value.serialize(&mut cid_serializer)
+        } else {
+            value.serialize(self)
+        }
     }
 
     #[inline]
@@ -732,5 +743,162 @@ where
     #[inline]
     fn end(self) -> Result<()> {
         self.end_inner()
+    }
+}
+
+/// Serializing a CID correctly as DAG-CBOR.
+struct CidSerializer<'a, W>(&'a mut Serializer<W>);
+
+impl<'a, W> ser::Serializer for &'a mut CidSerializer<'a, W>
+where
+    W: Write,
+{
+    type Ok = ();
+    type Error = Error;
+
+    type SerializeSeq = ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeTuple = ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleStruct = ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeTupleVariant = ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeMap = ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeStruct = ser::Impossible<Self::Ok, Self::Error>;
+    type SerializeStructVariant = ser::Impossible<Self::Ok, Self::Error>;
+
+    fn serialize_bool(self, _value: bool) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_i8(self, _value: i8) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_i16(self, _value: i16) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_i32(self, _value: i32) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_i64(self, _value: i64) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_u8(self, _value: u8) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_u16(self, _value: u16) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_u32(self, _value: u32) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_u64(self, _value: u64) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_f32(self, _value: f32) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_f64(self, _value: f64) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_char(self, _value: char) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_str(self, _value: &str) -> Result<Self::Ok> {
+        unreachable!();
+    }
+
+    fn serialize_bytes(self, value: &[u8]) -> Result<Self::Ok> {
+        // CIDs are serialized with CBOR tag 42.
+        self.0.write_u8(MAJOR_TYPE_TAG, CBOR_TAGS_CID)?;
+        // THe CID is prefixed with a null byte, hence add 1 to the length of the byte string.
+        self.0.write_u64(
+            MAJOR_TYPE_BYTES,
+            u64::try_from(value.len() + 1).expect("Platform must be at most 64-bit"),
+        )?;
+        // The bytes of the CID is prefixed with a null byte when encoded as CBOR.
+        self.0.writer.write_all(&[0x00]).map_err(Into::into)?;
+        self.0.writer.write_all(value).map_err(Into::into)?;
+        Ok(())
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_some<T: ?Sized + Serialize>(self, _value: &T) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_unit(self) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_unit_struct(self, _name: &str) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_unit_variant(
+        self,
+        _name: &str,
+        _variant_index: u32,
+        _variant: &str,
+    ) -> Result<Self::Ok> {
+        unreachable!();
+    }
+
+    fn serialize_newtype_struct<T: ?Sized + Serialize>(
+        self,
+        name: &str,
+        value: &T,
+    ) -> Result<Self::Ok> {
+        if name == CID_SERDE_NEWTYPE_STRUCT_NAME {
+            // The value of the CID is bytes, therefore this will lead to a call to
+            // `serialize_bytes`.
+            value.serialize(self)
+        } else {
+            unreachable!(
+                "This serializer must not be called on newtype structs other than one named `{}`",
+                CID_SERDE_NEWTYPE_STRUCT_NAME
+            );
+        }
+    }
+    fn serialize_newtype_variant<T: ?Sized + Serialize>(
+        self,
+        _name: &str,
+        _variant_index: u32,
+        _variant: &str,
+        _value: &T,
+    ) -> Result<Self::Ok> {
+        unreachable!();
+    }
+    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+        unreachable!();
+    }
+    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
+        unreachable!();
+    }
+    fn serialize_tuple_struct(
+        self,
+        _name: &str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleStruct> {
+        unreachable!();
+    }
+    fn serialize_tuple_variant(
+        self,
+        _name: &str,
+        _variant_index: u32,
+        _variant: &str,
+        _len: usize,
+    ) -> Result<Self::SerializeTupleVariant> {
+        unreachable!();
+    }
+    fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+        unreachable!();
+    }
+    fn serialize_struct(self, _name: &str, _len: usize) -> Result<Self::SerializeStruct> {
+        unreachable!();
+    }
+    fn serialize_struct_variant(
+        self,
+        _name: &str,
+        _variant_index: u32,
+        _variant: &str,
+        _len: usize,
+    ) -> Result<Self::SerializeStructVariant> {
+        unreachable!();
     }
 }
