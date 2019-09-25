@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use cid::serde::{CidVisitor, CID_SERDE_NEWTYPE_STRUCT_NAME};
 use serde::de;
 
 use crate::value::Value;
@@ -133,6 +134,17 @@ impl<'de> de::Deserialize<'de> for Value {
                 E: de::Error,
             {
                 Ok(Value::Float(v))
+            }
+
+            /// Newtype structs are only used to deserialize CIDs.
+            #[inline]
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: de::Deserializer<'de>,
+            {
+                deserializer
+                    .deserialize_newtype_struct(CID_SERDE_NEWTYPE_STRUCT_NAME, CidVisitor)
+                    .map(Value::Cid)
             }
         }
 

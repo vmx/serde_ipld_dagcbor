@@ -11,6 +11,8 @@ pub use self::de::from_value;
 #[doc(inline)]
 pub use self::ser::to_value;
 
+use cid::Cid;
+
 /// The `Value` enum, a loosely typed way of representing any valid CBOR value.
 ///
 /// Maps are sorted according to the canonical ordering
@@ -51,6 +53,8 @@ pub enum Value {
     /// to establish canonical order may be slow and therefore insertion
     /// and retrieval of values will be slow too.
     Map(BTreeMap<Value, Value>),
+    /// CID
+    Cid(Cid),
     // The hidden variant allows the enum to be extended
     // with variants for tags and simple values.
     #[doc(hidden)]
@@ -147,6 +151,7 @@ impl Value {
             Text(_) => 3,
             Array(_) => 4,
             Map(_) => 5,
+            Cid(_) => 6,
             __Hidden => unreachable!(),
         }
     }

@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::Error;
+use cid::serde::CID_SERDE_NEWTYPE_STRUCT_NAME;
 use serde::{self, Serialize};
 
 use crate::value::Value;
@@ -28,6 +29,9 @@ impl serde::Serialize for Value {
             Value::Float(v) => serializer.serialize_f64(v),
             Value::Bool(v) => serializer.serialize_bool(v),
             Value::Null => serializer.serialize_unit(),
+            Value::Cid(ref cid) => {
+                serializer.serialize_newtype_struct(CID_SERDE_NEWTYPE_STRUCT_NAME, &cid)
+            }
             Value::__Hidden => unreachable!(),
         }
     }
