@@ -7,6 +7,7 @@ use core::result;
 use core::str;
 use half::f16;
 use serde::de;
+use serde;
 #[cfg(feature = "std")]
 use std::io;
 
@@ -21,6 +22,36 @@ use crate::read::Offset;
 #[cfg(any(feature = "std", feature = "alloc"))]
 pub use crate::read::SliceRead;
 pub use crate::read::{MutSliceRead, Read, SliceReadFixed};
+
+/// CBOR tags can be stored with different bit widths
+#[derive(Clone, Copy, Debug)]
+pub enum TagType {
+    /// CBOR tags < 24 are stored inline with the tag identifier
+    Inline(u8),
+    /// 1 byte CBOR tag
+    U8,
+    /// 2 bytes CBOR tag
+    U16,
+    /// 4 bytes CBOR tag
+    U32,
+    /// 8 bytes CBOR tag
+    U64,
+}
+
+// TODO vmx2019-10-02: Move this one into tagger.rs
+/// Holds a CBOR tag and is used for deserialization and serialization.
+pub struct Tagger(pub u64);
+
+impl serde::Tagger for Tagger {
+    fn u64_tag(&self, format: &'static str) -> Option<u64> {
+        if format == "cbor" {
+            Some(self.0)
+        } else {
+            None
+        }
+    }
+}
+
 /// Decodes a value from CBOR data in a slice.
 ///
 /// # Examples
@@ -704,23 +735,28 @@ where
             0xbf => self.parse_indefinite_map(visitor),
 
             // Major type 6: optional semantic tagging of other major types
-            0xc0..=0xd7 => self.parse_value(visitor),
-            0xd8 => {
-                self.parse_u8()?;
-                self.parse_value(visitor)
-            }
-            0xd9 => {
-                self.parse_u16()?;
-                self.parse_value(visitor)
-            }
-            0xda => {
-                self.parse_u32()?;
-                self.parse_value(visitor)
-            }
-            0xdb => {
-                self.parse_u64()?;
-                self.parse_value(visitor)
-            }
+            //0xc0..=0xd7 => self.parse_value(visitor),
+            //0xd8 => {
+            //    self.parse_u8()?;
+            //    self.parse_value(visitor)
+            //}
+            //0xd9 => {
+            //    self.parse_u16()?;
+            //    self.parse_value(visitor)
+            //}
+            //0xda => {
+            //    self.parse_u32()?;
+            //    self.parse_value(visitor)
+            //}
+            //0xdb => {
+            //    self.parse_u64()?;
+            //    self.parse_value(visitor)
+            //}
+            val @ 0xc0..=0xd7 => self.parse_tag(TagType::Inline(val), visitor),
+            0xd8 => self.parse_tag(TagType::U8, visitor),
+            0xd9 => self.parse_tag(TagType::U16, visitor),
+            0xda => self.parse_tag(TagType::U32, visitor),
+            0xdb => self.parse_tag(TagType::U64, visitor),
             0xdc..=0xdf => Err(self.error(ErrorCode::UnassignedCode)),
 
             // Major type 7: floating-point numbers and other simple data types that need no content
@@ -747,6 +783,19 @@ where
 
             _ => unreachable!(),
         }
+    }
+    fn parse_tag<V>(&mut self, tag_type: TagType, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        let tag = match tag_type {
+            TagType::U8 => self.parse_u8()? as u64,
+            TagType::U16 => self.parse_u16()? as u64,
+            TagType::U32 => self.parse_u32()? as u64,
+            TagType::U64 => self.parse_u64()? as u64,
+            TagType::Inline(tag) => (tag - 0xc0) as u64,
+        };
+        visitor.visit_tagged_value(Tagger(tag), self)
     }
 }
 

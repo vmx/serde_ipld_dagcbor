@@ -11,6 +11,7 @@ use crate::error::{Error, Result};
 use byteorder::{BigEndian, ByteOrder};
 use half::f16;
 use serde::ser::{self, Serialize};
+use serde;
 #[cfg(feature = "std")]
 use std::io;
 
@@ -506,6 +507,17 @@ where
         }
         self.serialize_unit_variant(name, variant_index, variant)?;
         self.serialize_struct(name, len)
+    }
+
+    #[inline]
+    fn serialize_tagged_value<T, V>(self, tag: T, value: V) -> Result<()>
+    where
+        T: serde::Tagger, V: Serialize,
+    {
+        if let Some(t) = tag.u64_tag("cbor") {
+            self.write_u64(6, t)?;
+        }
+        value.serialize(self)
     }
 
     #[inline]

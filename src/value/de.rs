@@ -134,6 +134,21 @@ impl<'de> de::Deserialize<'de> for Value {
             {
                 Ok(Value::Float(v))
             }
+TODO vmx 2019-10-02: GO ON HERE
++            #[inline]
++            fn visit_tagged_value<T, D>(&mut self, tag: T, deserializer: &mut D)
++                    -> Result<Self::Value, D::Error>
++                    where T: Tagger, D: de::Deserializer 
++                {
++                    let val = try!(de::Deserialize::deserialize(deserializer));
++                    if let Some(t) = tag.u64_tag("cbor") {
++                        return Ok(Value::Tag(t, Box::new(val)));
++                    }
++                    Ok(val)
++                }
+         }
+
+
         }
 
         deserializer.deserialize_any(ValueVisitor)
