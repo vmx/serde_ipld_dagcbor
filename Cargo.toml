@@ -22,7 +22,7 @@ byteorder = { version = "1.0.0", default-features = false }
 # serde_cbor v0.10.0 msrv is v1.31
 # remove when next minor version is released 
 half = ">= 1.2.0, < 1.4.0"
-serde = { version = "1.0.14", default-features = false }
+serde = { git = "ssh://git@github.com/pyfisch/serde", branch="tagged-value-serialization", default-features = false }
 
 [dev-dependencies]
 serde_derive = { version = "1.0.14", default-features = false }
