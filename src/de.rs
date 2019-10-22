@@ -8,7 +8,7 @@ use core::str;
 use half::f16;
 use serde::de;
 #[cfg(feature = "std")]
-use std::io;
+use std::{any, io};
 
 use crate::error::{Error, ErrorCode, Result};
 #[cfg(not(feature = "unsealed_read_write"))]
@@ -555,6 +555,27 @@ where
         Ok(BigEndian::read_f64(&buf))
     }
 
+    fn parse_tag<V>(&mut self, tag: u8, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        let parsed_tag = match tag {
+            0xc0..=0xd7 => (tag - 0xc0) as u64,
+            0xd8 => self.parse_u8()? as u64,
+            0xd9 => self.parse_u16()? as u64,
+            0xda => self.parse_u32()? as u64,
+            0xdb => self.parse_u64()?,
+            _ => unreachable!(),
+        };
+        self.recursion_checked(|de| {
+            visitor.visit_tagged_value(
+                "cbor",
+                CborTagger(parsed_tag),
+                de,
+            )
+        })
+    }
+
     // Don't warn about the `unreachable!` in case
     // exhaustive integer pattern matching is enabled.
     #[allow(unreachable_patterns)]
@@ -704,23 +725,7 @@ where
             0xbf => self.parse_indefinite_map(visitor),
 
             // Major type 6: optional semantic tagging of other major types
-            0xc0..=0xd7 => self.recursion_checked(|de| de.parse_value(visitor)),
-            0xd8 => {
-                self.parse_u8()?;
-                self.recursion_checked(|de| de.parse_value(visitor))
-            }
-            0xd9 => {
-                self.parse_u16()?;
-                self.recursion_checked(|de| de.parse_value(visitor))
-            }
-            0xda => {
-                self.parse_u32()?;
-                self.recursion_checked(|de| de.parse_value(visitor))
-            }
-            0xdb => {
-                self.parse_u64()?;
-                self.recursion_checked(|de| de.parse_value(visitor))
-            }
+            0xc0..=0xdb => self.parse_tag(byte, visitor),
             0xdc..=0xdf => Err(self.error(ErrorCode::UnassignedCode)),
 
             // Major type 7: floating-point numbers and other simple data types that need no content
@@ -874,6 +879,16 @@ where
 
 trait MakeError {
     fn error(&self, code: ErrorCode) -> Error;
+}
+
+/// Holds a cbor tag and is used for deserialization
+#[derive(Debug)]
+pub struct CborTagger(u64);
+
+impl de::Tagger for CborTagger {
+    fn tag(&self) -> &dyn any::Any {
+        &self.0
+    }
 }
 
 struct SeqAccess<'a, R> {

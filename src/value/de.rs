@@ -134,6 +134,22 @@ impl<'de> de::Deserialize<'de> for Value {
             {
                 Ok(Value::Float(v))
             }
+
+            #[inline]
+            fn visit_tagged_value<T, D>(
+                self,
+                _format: &'static str,
+                tagger: T,
+                deserializer: D,
+            ) -> Result<Self::Value, D::Error>
+            where
+                T: de::Tagger,
+                D: de::Deserializer<'de>,
+            {
+                let value = de::Deserialize::deserialize(deserializer)?;
+                let tag = *tagger.tag().downcast_ref::<u64>().unwrap();
+                Ok(Value::Tag(tag, Box::new(value)))
+            }
         }
 
         deserializer.deserialize_any(ValueVisitor)
