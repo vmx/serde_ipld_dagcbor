@@ -97,4 +97,11 @@ mod std_tests {
         let reference = b"\xa2\x00\x11\x01\x18\x2a";
         assert_eq!(data, reference);
     }
+
+    #[test]
+    fn test_tagged_value() {
+        let value = Value::Tag(0, Box::new(Value::Text("2016-06-23T11:38:01Z".to_owned())));
+        let vec = serde_cbor::to_vec(&value).unwrap();
+        assert_eq!(vec, b"\xc0\x742016-06-23T11:38:01Z");
+    }
 }
