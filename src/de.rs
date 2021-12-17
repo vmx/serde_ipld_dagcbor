@@ -1354,8 +1354,8 @@ where
 {
     type Error = Error;
 
-    fn deserialize_any<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
+    fn deserialize_any<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+        self.deserialize_bytes(visitor)
     }
 
     fn deserialize_bool<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
