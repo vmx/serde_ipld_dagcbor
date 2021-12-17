@@ -22,6 +22,7 @@ half = "1.2.0"
 serde = { version = "1.0.14", default-features = false }
 
 [dev-dependencies]
+serde_bytes = "0.11.5"
 serde_derive = { version = "1.0.14", default-features = false }
 
 [features]

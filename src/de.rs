@@ -552,16 +552,8 @@ where
         self.parse_u64().map(|i| f64::from_bits(i))
     }
 
-    fn parse_cid<V>(&mut self, visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        self.recursion_checked(|de| {
-            let mut cid_deserializer = CidDeserializer(de);
-            // Use `visit_newtype_struct()` as entry point to be able to switch to another the
-            // `CidDeserializer` and `CidVisitor`.
-            visitor.visit_newtype_struct(&mut cid_deserializer)
-        })
+    fn peek_is_tag(&mut self) -> Result<bool> {
+        Ok(matches!(self.peek()?, Some(0xc0..=0xdb)))
     }
 
     // Don't warn about the `unreachable!` in case
@@ -571,6 +563,14 @@ where
     where
         V: de::Visitor<'de>,
     {
+        // Peek to check if we have a tag. If so, we tell the visitor to visit a newtype.
+        //
+        // They'll then call us back with the specific newtype they're looking for, and it better be
+        // a CID.
+        if self.peek_is_tag()? {
+            return visitor.visit_newtype_struct(self);
+        }
+
         let byte = self.parse_u8()?;
         match byte {
             // Major type 0: an unsigned integer
@@ -713,17 +713,8 @@ where
             0xbf => self.parse_indefinite_map(visitor),
 
             // Major type 6: optional semantic tagging of other major types
-            // Only tag 42 is supported, but that is parsed with the [`CidDeserializer`], hence we
-            // refuse parsing of any tags here.
-            0xc0..=0xd7 => Err(self.error(ErrorCode::UnexpectedCode)),
-            0xd8 => {
-                if self.parse_u8()? == CBOR_TAGS_CID {
-                    self.parse_cid(visitor)
-                } else {
-                    Err(self.error(ErrorCode::UnexpectedCode))
-                }
-            }
-            0xd9..=0xdb => Err(self.error(ErrorCode::UnexpectedCode)),
+            // We handle at the top of this function.
+            0xc0..=0xd8 => Err(self.error(ErrorCode::UnexpectedCode)),
             0xdc..=0xdf => Err(self.error(ErrorCode::UnassignedCode)),
 
             // Major type 7: floating-point numbers and other simple data types that need no content
@@ -782,11 +773,58 @@ where
     }
 
     #[inline]
-    fn deserialize_newtype_struct<V>(self, _name: &str, visitor: V) -> Result<V::Value>
+    fn deserialize_newtype_struct<V>(self, name: &str, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_newtype_struct(self)
+        if self.peek_is_tag()? {
+            // Make sure we're looking for a CID.
+            if name != CID_SERDE_NEWTYPE_STRUCT_NAME {
+                return Err(self.error(ErrorCode::UnexpectedCode));
+            }
+
+            // Make sure we have a CID.
+            if self.parse_u8()? != 0xd8 || self.parse_u8()? != CBOR_TAGS_CID {
+                return Err(self.error(ErrorCode::UnexpectedCode));
+            }
+
+            // Match on the major type, it must be a byte string (major type 2)
+            let len = match self.parse_u8()? {
+                byte @ 0x40..=0x57 => usize::try_from(byte - 0x40)
+                    .map_err(|_| self.error(ErrorCode::LengthOutOfRange))?,
+                0x58 => {
+                    let len = self.parse_u8()?;
+                    usize::try_from(len).map_err(|_| self.error(ErrorCode::LengthOutOfRange))?
+                }
+                0x59 => {
+                    let len = self.parse_u16()?;
+                    usize::try_from(len).map_err(|_| self.error(ErrorCode::LengthOutOfRange))?
+                }
+                0x5a => {
+                    let len = self.parse_u32()?;
+                    usize::try_from(len).map_err(|_| self.error(ErrorCode::LengthOutOfRange))?
+                }
+                0x5b => {
+                    let len = self.parse_u64()?;
+                    usize::try_from(len).map_err(|_| self.error(ErrorCode::LengthOutOfRange))?
+                }
+                _ => return Err(self.error(ErrorCode::UnexpectedCode)),
+            };
+
+            // We need to know there's at least a leading zero byte.
+            if len < 1 {
+                return Err(self.error(ErrorCode::LengthOutOfRange));
+            }
+
+            match self.read.read(len)? {
+                EitherLifetime::Long(buf) | EitherLifetime::Short(buf) => {
+                    // In DAG-CBOR the CID is prefixed with a null byte, strip that off.
+                    visitor.visit_bytes(&buf[1..])
+                }
+            }
+        } else {
+            visitor.visit_newtype_struct(self)
+        }
     }
 
     // Unit variants are encoded as just the variant identifier.
@@ -1335,174 +1373,5 @@ where
     {
         let seed = StructVariantSeed { visitor };
         self.map.next_value_seed(seed)
-    }
-}
-
-/// Deserialize a DAG-CBOR encoded CID.
-///
-/// This is without the CBOR tag information. It is only the CBOR byte string identifier (major
-/// type 2), the number of bytes, and a null byte prefixed CID.
-///
-/// The reason for not including the CBOR tag information is the [`Value`] implementation. That one
-/// starts to parse the bytes, before we could interfere. If the data only includes a CID, we are
-/// parsing over the tag to determine whether it is a CID or not and go from there.
-struct CidDeserializer<'a, R>(&'a mut Deserializer<R>);
-
-impl<'de, 'a, R> de::Deserializer<'de> for &'a mut CidDeserializer<'a, R>
-where
-    R: Read<'de>,
-{
-    type Error = Error;
-
-    fn deserialize_any<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-        self.deserialize_bytes(visitor)
-    }
-
-    fn deserialize_bool<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_byte_buf<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-
-    #[inline]
-    fn deserialize_bytes<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-        // Match on the major type, it must be a byte string (major type 2)
-        let len = match self.0.parse_u8()? {
-            byte @ 0x40..=0x57 => usize::try_from(byte - 0x40)
-                .map_err(|_| self.0.error(ErrorCode::LengthOutOfRange))?,
-            0x58 => {
-                let len = self.0.parse_u8()?;
-                usize::try_from(len).map_err(|_| self.0.error(ErrorCode::LengthOutOfRange))?
-            }
-            0x59 => {
-                let len = self.0.parse_u16()?;
-                usize::try_from(len).map_err(|_| self.0.error(ErrorCode::LengthOutOfRange))?
-            }
-            0x5a => {
-                let len = self.0.parse_u32()?;
-                usize::try_from(len).map_err(|_| self.0.error(ErrorCode::LengthOutOfRange))?
-            }
-            0x5b => {
-                let len = self.0.parse_u64()?;
-                usize::try_from(len).map_err(|_| self.0.error(ErrorCode::LengthOutOfRange))?
-            }
-            _ => unreachable!(),
-        };
-
-        match self.0.read.read(len)? {
-            EitherLifetime::Long(buf) | EitherLifetime::Short(buf) => {
-                // In DAG-CBOR the CID is prefixed with a null byte, strip that off.
-                visitor.visit_bytes(&buf[1..])
-            }
-        }
-    }
-
-    fn deserialize_char<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_enum<V: de::Visitor<'de>>(
-        self,
-        _name: &str,
-        _variants: &[&str],
-        _visitor: V,
-    ) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_f32<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_f64<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_i16<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_i32<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_i64<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_i8<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_identifier<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_ignored_any<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_map<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-
-    fn deserialize_newtype_struct<V: de::Visitor<'de>>(
-        self,
-        name: &str,
-        visitor: V,
-    ) -> Result<V::Value> {
-        if name == CID_SERDE_NEWTYPE_STRUCT_NAME {
-            self.deserialize_bytes(visitor)
-        } else {
-            unreachable!(
-                "This deserializer must not be called on newtype structs other than one named `{}`",
-                CID_SERDE_NEWTYPE_STRUCT_NAME
-            );
-        }
-    }
-
-    fn deserialize_option<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_seq<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_str<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_string<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_struct<V: de::Visitor<'de>>(
-        self,
-        _name: &str,
-        _fields: &[&str],
-        _visitor: V,
-    ) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_tuple<V: de::Visitor<'de>>(self, _len: usize, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_tuple_struct<V: de::Visitor<'de>>(
-        self,
-        _name: &str,
-        _len: usize,
-        _visitor: V,
-    ) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_u16<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_u32<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_u64<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_u8<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_unit<V: de::Visitor<'de>>(self, _visitor: V) -> Result<V::Value> {
-        unreachable!()
-    }
-    fn deserialize_unit_struct<V: de::Visitor<'de>>(
-        self,
-        _name: &str,
-        _visitor: V,
-    ) -> Result<V::Value> {
-        unreachable!()
     }
 }

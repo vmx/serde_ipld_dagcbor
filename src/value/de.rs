@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use cid::serde::{CidVisitor, CID_SERDE_NEWTYPE_STRUCT_NAME};
-use serde::de;
+use cid::Cid;
+use serde::de::{self, Deserialize};
 
 use crate::value::Value;
 
@@ -142,9 +142,19 @@ impl<'de> de::Deserialize<'de> for Value {
             where
                 D: de::Deserializer<'de>,
             {
-                deserializer
-                    .deserialize_newtype_struct(CID_SERDE_NEWTYPE_STRUCT_NAME, CidVisitor)
-                    .map(Value::Cid)
+                // Usually:
+                //
+                // 1. The visitor would call deserialize_newtype_struct(name) with a custom visitor
+                //    based on the newtype.
+                // 2. The deserializer would do something with the name (maybe check it against the
+                //    data, maybe create an alternative deserializer, etc.).
+                // 3. The deserializer would then call back into the visitor with visit_newtype_struct.
+                //
+                // Here, we're being driven by deserialize_any, so we don't have any of that.
+                //
+                // So we just assume that CIDs are the _only_ valid newtype. If we're _not_ looking
+                // at a properly tagged, cbor-encoded CID, we'll fail here.
+                Cid::deserialize(deserializer).map(Value::Cid)
             }
         }
 
