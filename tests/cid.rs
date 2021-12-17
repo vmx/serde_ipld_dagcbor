@@ -53,3 +53,14 @@ fn test_cid() {
     expected_map.insert(Value::Text("data".to_string()), Value::Bool(true));
     assert_eq!(mystruct_decoded_as_value, Value::Map(expected_map));
 }
+
+/// Test that arbitrary bytes are not interpreted as CID.
+#[test]
+fn test_binary_not_as_cid() {
+    // h'affe'
+    // 42      # bytes(2)
+    //    AFFE # "\xAF\xFE"
+    let bytes = [0x42, 0xaf, 0xfe];
+    let bytes_as_value: Value = from_slice(&bytes).unwrap();
+    assert_eq!(bytes_as_value, Value::Bytes(vec![0xaf, 0xfe]));
+}
