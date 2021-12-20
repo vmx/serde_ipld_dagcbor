@@ -93,6 +93,5 @@ fn test_cid_bytes_without_tag() {
 
     // The CID without the tag 42 prefix
     let cbor_bytes = &cbor_cid[2..];
-    println!("vmx: cid wiouth tag: {:02X?}", cbor_bytes);
     from_slice::<Cid>(&cbor_bytes).expect_err("should have failed to decode bytes as cid");
 }
