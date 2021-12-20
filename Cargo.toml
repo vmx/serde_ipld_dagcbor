@@ -20,6 +20,7 @@ maintenance = { status = "passively-maintained" }
 cid = { version = "0.7.0", features = ["serde-codec"] }
 half = "1.2.0"
 serde = { version = "1.0.14", default-features = false }
+serde_bytes = "0.11.5"
 
 [dev-dependencies]
 serde_derive = { version = "1.0.14", default-features = false }
@@ -34,4 +35,5 @@ unsealed_read_write = []
 
 [patch.crates-io]
 multihash = { git = "https://github.com/multiformats/rust-multihash", branch = "next" }
-cid = { git = "https://github.com/multiformats/rust-cid", branch = "serde-as-bytes" }
+#cid = { git = "https://github.com/multiformats/rust-cid", branch = "serde-as-bytes" }
+cid = { git = "https://github.com/multiformats/rust-cid", rev = "4b2f7f9" }
