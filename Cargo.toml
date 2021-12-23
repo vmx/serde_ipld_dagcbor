@@ -24,6 +24,7 @@ serde_bytes = "0.11.5"
 
 [dev-dependencies]
 serde_derive = { version = "1.0.14", default-features = false }
+libipld-core = "0.12.0"
 
 [features]
 default = ["std"]
@@ -37,3 +38,4 @@ unsealed_read_write = []
 multihash = { git = "https://github.com/multiformats/rust-multihash", branch = "next" }
 #cid = { git = "https://github.com/multiformats/rust-cid", branch = "serde-as-bytes" }
 cid = { git = "https://github.com/multiformats/rust-cid", rev = "4b2f7f9" }
+libipld-core = { git = "https://github.com/ipld/libipld", branch = "ipld-serde" }

@@ -1204,19 +1204,19 @@ where
 /// ```
 /// # extern crate serde_cbor;
 /// use serde_cbor::de::Deserializer;
-/// use serde_cbor::value::Value;
+/// use libipld_core::ipld::Ipld;
 ///
 /// # fn main() {
 /// let data: Vec<u8> = vec![
 ///     0x01, 0x66, 0x66, 0x6f, 0x6f, 0x62, 0x61, 0x72,
 /// ];
-/// let mut it = Deserializer::from_slice(&data[..]).into_iter::<Value>();
+/// let mut it = Deserializer::from_slice(&data[..]).into_iter::<Ipld>();
 /// assert_eq!(
-///     Value::Integer(1),
+///     Ipld::Integer(1),
 ///     it.next().unwrap().unwrap()
 /// );
 /// assert_eq!(
-///     Value::Text("foobar".to_string()),
+///     Ipld::String("foobar".to_string()),
 ///     it.next().unwrap().unwrap()
 /// );
 /// # }
