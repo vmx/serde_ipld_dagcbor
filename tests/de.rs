@@ -47,14 +47,13 @@ fn test_indefinite_object() {
 mod std_tests {
     use std::collections::BTreeMap;
 
-    use serde::de as serde_de;
     use libipld_core::ipld::Ipld;
+    use serde::de as serde_de;
     use serde_cbor::{de, error, to_vec, Deserializer};
 
     #[test]
     fn test_string1() {
-        let ipld: error::Result<Ipld> =
-            de::from_slice(&[0x66, 0x66, 0x6f, 0x6f, 0x62, 0x61, 0x72]);
+        let ipld: error::Result<Ipld> = de::from_slice(&[0x66, 0x66, 0x6f, 0x6f, 0x62, 0x61, 0x72]);
         assert_eq!(ipld.unwrap(), Ipld::String("foobar".to_string()));
     }
 
@@ -79,8 +78,7 @@ mod std_tests {
 
     #[test]
     fn test_byte_string() {
-        let ipld: error::Result<Ipld> =
-            de::from_slice(&[0x46, 0x66, 0x6f, 0x6f, 0x62, 0x61, 0x72]);
+        let ipld: error::Result<Ipld> = de::from_slice(&[0x46, 0x66, 0x6f, 0x6f, 0x62, 0x61, 0x72]);
         assert_eq!(ipld.unwrap(), Ipld::Bytes(b"foobar".to_vec()));
     }
 
@@ -119,11 +117,7 @@ mod std_tests {
         let ipld: error::Result<Ipld> = de::from_slice(b"\x83\x01\x02\x03");
         assert_eq!(
             ipld.unwrap(),
-            Ipld::List(vec![
-                Ipld::Integer(1),
-                Ipld::Integer(2),
-                Ipld::Integer(3)
-            ])
+            Ipld::List(vec![Ipld::Integer(1), Ipld::Integer(2), Ipld::Integer(3)])
         );
     }
 
@@ -134,10 +128,7 @@ mod std_tests {
             ipld.unwrap(),
             Ipld::List(vec![
                 Ipld::Integer(1),
-                Ipld::List(vec![
-                    Ipld::Integer(2),
-                    Ipld::List(vec![Ipld::Integer(3)])
-                ])
+                Ipld::List(vec![Ipld::Integer(2), Ipld::List(vec![Ipld::Integer(3)])])
             ])
         );
     }
@@ -171,11 +162,7 @@ mod std_tests {
         let ipld: error::Result<Ipld> = de::from_slice(b"\x9f\x01\x02\x03\xff");
         assert_eq!(
             ipld.unwrap(),
-            Ipld::List(vec![
-                Ipld::Integer(1),
-                Ipld::Integer(2),
-                Ipld::Integer(3)
-            ])
+            Ipld::List(vec![Ipld::Integer(1), Ipld::Integer(2), Ipld::Integer(3)])
         );
     }
 
@@ -310,10 +297,7 @@ mod std_tests {
         let slice = b"\xbf\x67\x6d\x65\x73\x73\x61\x67\x65\x64\x70\x6f\x6e\x67\xff";
         let ipld: Ipld = de::from_slice(slice).unwrap();
         let mut map = BTreeMap::new();
-        map.insert(
-            "message".to_string(),
-            Ipld::String("pong".to_string()),
-        );
+        map.insert("message".to_string(), Ipld::String("pong".to_string()));
         assert_eq!(ipld, Ipld::Map(map))
     }
 

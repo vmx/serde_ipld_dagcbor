@@ -31,8 +31,8 @@ fn test_simple_data_enum_roundtrip() {
 mod std_tests {
     use std::collections::BTreeMap;
 
-    use serde_cbor::ser::{IoWrite, Serializer};
     use libipld_core::ipld::Ipld;
+    use serde_cbor::ser::{IoWrite, Serializer};
     use serde_cbor::{from_slice, to_vec};
 
     pub fn to_vec_legacy<T>(value: &T) -> serde_cbor::Result<Vec<u8>>

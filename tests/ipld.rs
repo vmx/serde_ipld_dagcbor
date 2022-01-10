@@ -69,10 +69,7 @@ mod std_tests {
             panic!()
         }
 
-        for ((k1, v1), (k2, v2)) in as_object(&ipld)
-            .iter()
-            .zip(as_object(&data_de_ipld).iter())
-        {
+        for ((k1, v1), (k2, v2)) in as_object(&ipld).iter().zip(as_object(&data_de_ipld).iter()) {
             assert_eq!(k1, k2);
             assert_eq!(v1, v2);
         }
