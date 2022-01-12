@@ -9,7 +9,7 @@ pub use crate::write::{SliceWrite, Write};
 
 use crate::error::{Error, Result};
 use crate::CBOR_TAGS_CID;
-use cid::serde::CID_SERDE_NEWTYPE_STRUCT_NAME;
+use cid::serde::CID_SERDE_PRIVATE_IDENTIFIER;
 use half::f16;
 use serde::ser::{self, Serialize};
 use std::convert::TryFrom;
@@ -409,12 +409,12 @@ where
     where
         T: ?Sized + ser::Serialize,
     {
-        if name == CID_SERDE_NEWTYPE_STRUCT_NAME {
-            let mut cid_serializer = CidSerializer(self);
-            value.serialize(&mut cid_serializer)
-        } else {
+        //if name == CID_SERDE_PRIVATE_IDENTIFIER{
+        //    let mut cid_serializer = CidSerializer(self);
+        //    value.serialize(&mut cid_serializer)
+        //} else {
             value.serialize(self)
-        }
+        //}
     }
 
     #[inline]
@@ -428,14 +428,19 @@ where
     where
         T: ?Sized + ser::Serialize,
     {
-        if self.enum_as_map {
-            self.write_u64(5, 1u64)?;
-            variant.serialize(&mut *self)?;
+        if name == CID_SERDE_PRIVATE_IDENTIFIER && variant_index == 0 && variant == CID_SERDE_PRIVATE_IDENTIFIER {
+            let mut cid_serializer = CidSerializer(self);
+            value.serialize(&mut cid_serializer)
         } else {
-            self.writer.write_all(&[4 << 5 | 2]).map_err(|e| e.into())?;
-            self.serialize_unit_variant(name, variant_index, variant)?;
+            if self.enum_as_map {
+                self.write_u64(5, 1u64)?;
+                variant.serialize(&mut *self)?;
+            } else {
+                self.writer.write_all(&[4 << 5 | 2]).map_err(|e| e.into())?;
+                self.serialize_unit_variant(name, variant_index, variant)?;
+            }
+            value.serialize(self)
         }
-        value.serialize(self)
     }
 
     #[inline]
@@ -844,14 +849,14 @@ where
         name: &str,
         value: &T,
     ) -> Result<Self::Ok> {
-        if name == CID_SERDE_NEWTYPE_STRUCT_NAME {
+        if name == CID_SERDE_PRIVATE_IDENTIFIER {
             // The value of the CID is bytes, therefore this will lead to a call to
             // `serialize_bytes`.
             value.serialize(self)
         } else {
             unreachable!(
                 "This serializer must not be called on newtype structs other than one named `{}`",
-                CID_SERDE_NEWTYPE_STRUCT_NAME
+                CID_SERDE_PRIVATE_IDENTIFIER
             );
         }
     }
