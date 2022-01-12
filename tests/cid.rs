@@ -136,3 +136,34 @@ fn test_cid_in_untagged_union() {
     let bytes = cbor_bytes[2..].to_vec();
     assert_eq!(decoded_bytes, Untagged::Bytes(bytes));
 }
+
+#[test]
+fn test_cid_in_untagged_union_with_newtype() {
+    #[derive(Debug, Deserialize, PartialEq, Serialize)]
+    pub struct Foo(#[serde(with = "serde_bytes")] Vec<u8>);
+
+    #[derive(Debug, Deserialize, PartialEq, Serialize)]
+    #[serde(untagged)]
+    pub enum Untagged {
+        Bytes(Foo),
+        Link(Cid),
+    }
+
+    let cbor_cid = [
+        0xd8, 0x2a, 0x58, 0x25, 0x00, 0x01, 0x55, 0x12, 0x20, 0x2c, 0x26, 0xb4, 0x6b, 0x68, 0xff,
+        0xc6, 0x8f, 0xf9, 0x9b, 0x45, 0x3c, 0x1d, 0x30, 0x41, 0x34, 0x13, 0x42, 0x2d, 0x70, 0x64,
+        0x83, 0xbf, 0xa0, 0xf9, 0x8a, 0x5e, 0x88, 0x62, 0x66, 0xe7, 0xae,
+    ];
+
+    let decoded_cid: Untagged = from_slice(&cbor_cid).unwrap();
+    let cid = Cid::try_from(&cbor_cid[5..]).unwrap();
+    assert_eq!(decoded_cid, Untagged::Link(cid));
+
+    //// The CID without the tag 42 prefix
+    //let cbor_bytes = &cbor_cid[2..];
+    //let decoded_bytes: Untagged = from_slice(&cbor_bytes).unwrap();
+    //// The CBOR decoded bytes don't contain the prefix with the bytes type identifier and the
+    //// length.
+    //let bytes = cbor_bytes[2..].to_vec();
+    //assert_eq!(decoded_bytes, Untagged::Bytes(Foo(bytes)));
+}
