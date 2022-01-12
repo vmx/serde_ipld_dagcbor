@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use std::convert::TryFrom;
+use std::str::FromStr;
 
 use cid::Cid;
 use libipld_core::ipld::Ipld;
@@ -79,9 +79,14 @@ fn test_cid_not_as_bytes() {
         .expect_err("shouldn't have parsed a tagged CID as a byte array");
     from_slice::<serde_bytes::ByteBuf>(&cbor_cid[2..])
         .expect("should have parsed an untagged CID as a byte array");
+
+    #[derive(Deserialize, Serialize, Debug)]
+    struct WrappedVec(Vec<u8>);
+    from_slice::<WrappedVec>(&cbor_cid)
+        .expect_err("shouldn't have parsed a tagged CID as a newtype sequence");
 }
 
-/// Test whether a binary CID could be serialized if it isn't prefixed by tag 42. It should fail.
+/// Test whether a binary CID could be deserialized if it isn't prefixed by tag 42. It should fail.
 #[test]
 fn test_cid_bytes_without_tag() {
     let cbor_cid = [
@@ -95,6 +100,13 @@ fn test_cid_bytes_without_tag() {
     // The CID without the tag 42 prefix
     let cbor_bytes = &cbor_cid[2..];
     from_slice::<Cid>(&cbor_bytes).expect_err("should have failed to decode bytes as cid");
+
+    // And it won't work with a newtype CID.
+
+    #[derive(Deserialize, Serialize, Debug)]
+    struct WrappedCid(Cid);
+    from_slice::<WrappedCid>(&cbor_bytes)
+        .expect_err("should have failed to decode bytes as wrapped cid");
 }
 
 #[test]
@@ -124,4 +136,3 @@ fn test_cid_in_untagged_union() {
     let bytes = cbor_bytes[2..].to_vec();
     assert_eq!(decoded_bytes, Untagged::Bytes(bytes));
 }
-
