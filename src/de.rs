@@ -9,6 +9,7 @@ use core::str;
 use half::f16;
 use serde::{de, forward_to_deserialize_any};
 use serde::Deserialize as _;
+use serde_bytes::ByteBuf;
 use std::convert::TryFrom;
 #[cfg(feature = "std")]
 use std::io;
@@ -584,8 +585,14 @@ where
             match de.read.read(len)? {
                 EitherLifetime::Long(buf) | EitherLifetime::Short(buf) => {
                     // In DAG-CBOR the CID is prefixed with a null byte, strip that off.
-                    let foo = visitor.visit_bytes(&buf[1..]);
+                    //let foo = visitor.visit_bytes(&buf[1..]);
+                    //foo
+                    //let foo = visitor.visit_enum(CidVariantAccess(de));
+                    //foo
+                    //let foo = visitor.visit_enum(CidVariantAccess(de));
+                    let foo = visitor.visit_enum(CidAlreadyParsed(ByteBuf::from(&buf[1..])));
                     foo
+
                     //let mut len = 1;
                     //let foo = visitor.visit_enum(VariantAccess {
                     //    seq: SeqAccess { de, len: &mut len },
@@ -1175,12 +1182,6 @@ where
 // From https://github.com/honsunrise/path-value/blob/d5eb3283f68b82e73cbc627889c32d32d484a009/src/value/de.rs#L141-L162
 struct StrDeserializer<'a>(&'a str);
 
-impl<'a> StrDeserializer<'a> {
-    fn new(key: &'a str) -> Self {
-        StrDeserializer(key)
-    }
-}
-
 impl<'de, 'a: 'de> de::Deserializer<'de> for StrDeserializer<'a> {
     type Error = Error;
 
@@ -1193,6 +1194,82 @@ impl<'de, 'a: 'de> de::Deserializer<'de> for StrDeserializer<'a> {
         bool u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char str string seq
         bytes byte_buf map struct unit enum newtype_struct
         identifier ignored_any unit_struct tuple_struct tuple option
+    }
+}
+
+
+//struct BytesDeserializer<'a>(&'a [u8]);
+struct BytesDeserializer(ByteBuf);
+
+//impl<'de, 'a: 'de> de::Deserializer<'de> for BytesDeserializer<'a> {
+impl<'de> de::Deserializer<'de> for BytesDeserializer {
+    type Error = Error;
+
+    #[inline]
+    fn deserialize_any<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+        visitor.visit_bytes(&self.0)
+    }
+
+    forward_to_deserialize_any! {
+        bool u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char str string seq
+        bytes byte_buf map struct unit enum newtype_struct
+        identifier ignored_any unit_struct tuple_struct tuple option
+    }
+}
+
+
+//struct CidAlreadyParsed<'a>(&'a [u8]);
+struct CidAlreadyParsed(ByteBuf);
+
+//impl<'de, 'a: 'de> de::EnumAccess<'de> for CidAlreadyParsed<'a>
+impl<'de> de::EnumAccess<'de> for CidAlreadyParsed
+{
+    type Error = Error;
+    type Variant = Self;
+
+    fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant)>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        // This is the Serde way of saying `let value = CID_SERDE_PRIVATE_IDENTIFIER;`.
+        // TODO vmx 2022-01-13: Check if this can be optimized to more direct calls like e.g.
+        // `seed.deserialize_str()` or so.
+        //let value = seed.deserialize(BytesDeserializer(self.0.clone()))?;
+        let value = seed.deserialize(StrDeserializer(CID_SERDE_PRIVATE_IDENTIFIER))?;
+        Ok((value, self))
+    }
+}
+
+//impl<'de, 'a: 'de> de::VariantAccess<'de> for CidAlreadyParsed<'a>
+impl<'de> de::VariantAccess<'de> for CidAlreadyParsed
+    {
+    type Error = Error;
+
+    fn unit_variant(mut self) -> Result<()> {
+        unimplemented!();
+    }
+
+    fn newtype_variant_seed<S>(mut self, seed: S) -> Result<S::Value>
+    where
+        S: de::DeserializeSeed<'de>,
+    {
+        println!("vmx: cbor variantaccess: cid already parsed: newtype variant seed");
+        let bytes = seed.deserialize(BytesDeserializer(self.0));
+        bytes
+    }
+
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        unimplemented!();
+    }
+
+    fn struct_variant<V>(mut self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        unimplemented!();
     }
 }
 
