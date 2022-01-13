@@ -1,12 +1,14 @@
 //! Deserialization.
 
-use cid::serde::CID_SERDE_NEWTYPE_STRUCT_NAME;
+use cid::serde::CID_SERDE_PRIVATE_IDENTIFIER;
+use cid::Cid;
 use core::f32;
 use core::marker::PhantomData;
 use core::result;
 use core::str;
 use half::f16;
-use serde::de;
+use serde::{de, forward_to_deserialize_any};
+use serde::Deserialize as _;
 use std::convert::TryFrom;
 #[cfg(feature = "std")]
 use std::io;
@@ -557,10 +559,50 @@ where
         V: de::Visitor<'de>,
     {
         self.recursion_checked(|de| {
-            let mut cid_deserializer = CidDeserializer(de);
-            // Use `visit_newtype_struct()` as entry point to be able to switch to another the
-            // `CidDeserializer` and `CidVisitor`.
-            visitor.visit_newtype_struct(&mut cid_deserializer)
+            let len = match de.parse_u8()? {
+                byte @ 0x40..=0x57 => usize::try_from(byte - 0x40)
+                    .map_err(|_| de.error(ErrorCode::LengthOutOfRange))?,
+                0x58 => {
+                    let len = de.parse_u8()?;
+                    usize::try_from(len).map_err(|_| de.error(ErrorCode::LengthOutOfRange))?
+                }
+                0x59 => {
+                    let len = de.parse_u16()?;
+                    usize::try_from(len).map_err(|_| de.error(ErrorCode::LengthOutOfRange))?
+                }
+                0x5a => {
+                    let len = de.parse_u32()?;
+                    usize::try_from(len).map_err(|_| de.error(ErrorCode::LengthOutOfRange))?
+                }
+                0x5b => {
+                    let len = de.parse_u64()?;
+                    usize::try_from(len).map_err(|_| de.error(ErrorCode::LengthOutOfRange))?
+                }
+                _ => unreachable!(),
+            };
+
+            match de.read.read(len)? {
+                EitherLifetime::Long(buf) | EitherLifetime::Short(buf) => {
+                    // In DAG-CBOR the CID is prefixed with a null byte, strip that off.
+                    let foo = visitor.visit_bytes(&buf[1..]);
+                    foo
+                    //let mut len = 1;
+                    //let foo = visitor.visit_enum(VariantAccess {
+                    //    seq: SeqAccess { de, len: &mut len },
+                    //})?;
+                    //Ok(foo)
+                    //Cid::try_from(&buf[1..])
+                    //    .map_err(|err| de::Error::custom(format!("Failed to deserialize CID: {}", err)))
+                }
+            }
+
+            ////let cid = Cid::deserialize();
+            //let mut cid_deserializer = CidDeserializer(de);
+            //// Use `visit_newtype_struct()` as entry point to be able to switch to another the
+            //// `CidDeserializer` and `CidVisitor`.
+            //visitor.visit_newtype_struct(&mut cid_deserializer)
+            ////visitor.visit_bytes()
+            ////cid_deserializer.deserialize_bytes(visitor)
         })
     }
 
@@ -782,11 +824,16 @@ where
     }
 
     #[inline]
-    fn deserialize_newtype_struct<V>(self, _name: &str, visitor: V) -> Result<V::Value>
+    fn deserialize_newtype_struct<V>(self, name: &str, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_newtype_struct(self)
+        //visitor.visit_newtype_struct(self)
+        if name == CID_SERDE_PRIVATE_IDENTIFIER {
+            self.deserialize_bytes(visitor)
+        } else {
+            visitor.visit_newtype_struct(self)
+        }
     }
 
     // Unit variants are encoded as just the variant identifier.
@@ -795,13 +842,28 @@ where
     #[inline]
     fn deserialize_enum<V>(
         self,
-        _name: &str,
+        name: &str,
         _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
+        // TODO vmx 2022-01-12: Check also for variants
+        if name == CID_SERDE_PRIVATE_IDENTIFIER {
+            //return self.deserialize_bytes(visitor)
+            //return self.parse_value(visitor)
+            let mut len = 1;
+            //let foo = visitor.visit_enum(VariantAccess {
+            //    seq: SeqAccess {
+            //        de: self,
+            //        len: &mut len,
+            //    },
+            //})?;
+            let foo = visitor.visit_enum(CidVariantAccess(self))?;
+            return Ok(foo);
+        }
+
         match self.peek()? {
             Some(byte @ 0x80..=0x9f) => {
                 if !self.accept_legacy_enums {
@@ -1109,6 +1171,91 @@ where
     }
 }
 
+
+// From https://github.com/honsunrise/path-value/blob/d5eb3283f68b82e73cbc627889c32d32d484a009/src/value/de.rs#L141-L162
+struct StrDeserializer<'a>(&'a str);
+
+impl<'a> StrDeserializer<'a> {
+    fn new(key: &'a str) -> Self {
+        StrDeserializer(key)
+    }
+}
+
+impl<'de, 'a: 'de> de::Deserializer<'de> for StrDeserializer<'a> {
+    type Error = Error;
+
+    #[inline]
+    fn deserialize_any<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+        visitor.visit_borrowed_str(self.0)
+    }
+
+    forward_to_deserialize_any! {
+        bool u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char str string seq
+        bytes byte_buf map struct unit enum newtype_struct
+        identifier ignored_any unit_struct tuple_struct tuple option
+    }
+}
+
+
+/// An enum variant access specifically for CIDs.
+///
+/// CIDs are encoded as enums and need special decoding rules.
+//struct CidVariantAccess<'a, R>(&'a mut Deserializer<R>);
+//struct CidVariantAccess;
+struct CidVariantAccess<'a, R>(&'a mut Deserializer<R>);
+
+
+impl<'a, 'de, R> de::EnumAccess<'de> for CidVariantAccess<'a, R>
+where
+    R: Read<'de>,
+{
+    type Error = Error;
+    type Variant = Self;
+
+    fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant)>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        // This is the Serde way of saying `let value = CID_SERDE_PRIVATE_IDENTIFIER;`.
+        // TODO vmx 2022-01-13: Check if this can be optimized to more direct calls like e.g.
+        // `seed.deserialize_str()` or so.
+        let value = seed.deserialize(StrDeserializer(CID_SERDE_PRIVATE_IDENTIFIER))?;
+        Ok((value, self))
+    }
+}
+
+impl<'a, 'de, R> de::VariantAccess<'de> for CidVariantAccess<'a, R>
+where
+    R: Read<'de>,
+    {
+    type Error = Error;
+
+    fn unit_variant(mut self) -> Result<()> {
+        unimplemented!();
+    }
+
+    fn newtype_variant_seed<S>(mut self, seed: S) -> Result<S::Value>
+    where
+        S: de::DeserializeSeed<'de>,
+    {
+        seed.deserialize(self.0)
+    }
+
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        unimplemented!();
+    }
+
+    fn struct_variant<V>(mut self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        unimplemented!();
+    }
+}
+
 struct VariantAccess<T> {
     seq: T,
 }
@@ -1348,7 +1495,7 @@ where
 /// parsing over the tag to determine whether it is a CID or not and go from there.
 struct CidDeserializer<'a, R>(&'a mut Deserializer<R>);
 
-impl<'de, 'a, R> de::Deserializer<'de> for &'a mut CidDeserializer<'a, R>
+impl<'de, 'a: 'de, R> de::Deserializer<'de> for &'a mut CidDeserializer<'a, R>
 where
     R: Read<'de>,
 {
@@ -1393,7 +1540,11 @@ where
         match self.0.read.read(len)? {
             EitherLifetime::Long(buf) | EitherLifetime::Short(buf) => {
                 // In DAG-CBOR the CID is prefixed with a null byte, strip that off.
-                visitor.visit_bytes(&buf[1..])
+                //visitor.visit_bytes(&buf[1..])
+                //visitor.visit_bytes(&buf[1..].to_vec())
+                visitor.visit_borrowed_bytes(&buf[1..])
+                //Cid::try_from(&buf[1..])
+                //    .map_err(|err| de::Error::custom(format!("Failed to deserialize CID: {}", err)))
             }
         }
     }
@@ -1442,12 +1593,12 @@ where
         name: &str,
         visitor: V,
     ) -> Result<V::Value> {
-        if name == CID_SERDE_NEWTYPE_STRUCT_NAME {
+        if name == CID_SERDE_PRIVATE_IDENTIFIER {
             self.deserialize_bytes(visitor)
         } else {
             unreachable!(
                 "This deserializer must not be called on newtype structs other than one named `{}`",
-                CID_SERDE_NEWTYPE_STRUCT_NAME
+                CID_SERDE_PRIVATE_IDENTIFIER
             );
         }
     }
