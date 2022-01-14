@@ -97,6 +97,11 @@ fn test_cid_bytes_without_tag() {
     from_slice::<Cid>(&cbor_bytes).expect_err("should have failed to decode bytes as cid");
 }
 
+/// This test checks the behaviour when `#[serde(untagged)]` is used with a [`Cid`].
+///
+/// If the enum would match a CID, it will return an error, as CIDs are represented as enums, which
+/// aren't supported by `#[serde[untagged])`. If it matches something else, e.g.
+/// `serde_bytes::BytesBuf`, then it will correctly match that.
 #[test]
 fn test_cid_in_untagged_union() {
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -112,9 +117,9 @@ fn test_cid_in_untagged_union() {
         0x83, 0xbf, 0xa0, 0xf9, 0x8a, 0x5e, 0x88, 0x62, 0x66, 0xe7, 0xae,
     ];
 
-    let decoded_cid: Untagged = from_slice(&cbor_cid).unwrap();
-    let cid = Cid::try_from(&cbor_cid[5..]).unwrap();
-    assert_eq!(decoded_cid, Untagged::Link(cid));
+    let decoded_cid: Result<Untagged, _> = from_slice(&cbor_cid);
+    // Error is `untagged and internally tagged enums do not support enum input`.
+    assert!(decoded_cid.unwrap_err().is_data());
 
     // The CID without the tag 42 prefix
     let cbor_bytes = &cbor_cid[2..];
@@ -125,6 +130,13 @@ fn test_cid_in_untagged_union() {
     assert_eq!(decoded_bytes, Untagged::Bytes(bytes));
 }
 
+/// This test checks the behaviour when `#[serde(untagged)]` is used with a [`Cid`].
+///
+/// If the enum would match a CID, it will return an error, as CIDs are represented as enums, which
+/// aren't supported by `#[serde[untagged])`. If it matches something else, e.g.
+/// [`serde_bytes::BytesBuf`], then it will correctly match that.
+///
+/// This specifically tests if both, the CID as well as the bytes are wrapped in a newtype struct.
 #[test]
 fn test_cid_in_untagged_union_with_newtype() {
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -143,15 +155,16 @@ fn test_cid_in_untagged_union_with_newtype() {
         0x83, 0xbf, 0xa0, 0xf9, 0x8a, 0x5e, 0x88, 0x62, 0x66, 0xe7, 0xae,
     ];
 
-    let decoded_cid: Untagged = from_slice(&cbor_cid).unwrap();
-    let cid = Cid::try_from(&cbor_cid[5..]).unwrap();
-    assert_eq!(decoded_cid, Untagged::Link(cid));
+    // Enums are not supported within `#[serde(untagged)]`.
+    let decoded_cid: Result<Untagged, _> = from_slice(&cbor_cid);
+    // Error is `untagged and internally tagged enums do not support enum input`.
+    assert!(decoded_cid.unwrap_err().is_data());
 
-    //// The CID without the tag 42 prefix
-    //let cbor_bytes = &cbor_cid[2..];
-    //let decoded_bytes: Untagged = from_slice(&cbor_bytes).unwrap();
-    //// The CBOR decoded bytes don't contain the prefix with the bytes type identifier and the
-    //// length.
-    //let bytes = cbor_bytes[2..].to_vec();
-    //assert_eq!(decoded_bytes, Untagged::Bytes(Foo(bytes)));
+    // The CID without the tag 42 prefix
+    let cbor_bytes = &cbor_cid[2..];
+    let decoded_bytes: Untagged = from_slice(&cbor_bytes).unwrap();
+    // The CBOR decoded bytes don't contain the prefix with the bytes type identifier and the
+    // length.
+    let bytes = cbor_bytes[2..].to_vec();
+    assert_eq!(decoded_bytes, Untagged::MyBytes(Foo(bytes)));
 }
