@@ -409,12 +409,7 @@ where
     where
         T: ?Sized + ser::Serialize,
     {
-        //if name == CID_SERDE_PRIVATE_IDENTIFIER{
-        //    let mut cid_serializer = CidSerializer(self);
-        //    value.serialize(&mut cid_serializer)
-        //} else {
         value.serialize(self)
-        //}
     }
 
     #[inline]
@@ -848,19 +843,10 @@ where
 
     fn serialize_newtype_struct<T: ?Sized + Serialize>(
         self,
-        name: &str,
-        value: &T,
+        _name: &str,
+        _value: &T,
     ) -> Result<Self::Ok> {
-        if name == CID_SERDE_PRIVATE_IDENTIFIER {
-            // The value of the CID is bytes, therefore this will lead to a call to
-            // `serialize_bytes`.
-            value.serialize(self)
-        } else {
-            unreachable!(
-                "This serializer must not be called on newtype structs other than one named `{}`",
-                CID_SERDE_PRIVATE_IDENTIFIER
-            );
-        }
+        unreachable!();
     }
     fn serialize_newtype_variant<T: ?Sized + Serialize>(
         self,
