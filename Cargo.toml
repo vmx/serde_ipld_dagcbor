@@ -38,5 +38,7 @@ unsealed_read_write = []
 multihash = { git = "https://github.com/multiformats/rust-multihash", branch = "next" }
 #cid = { git = "https://github.com/multiformats/rust-cid", branch = "serde-as-bytes" }
 #cid = { git = "https://github.com/multiformats/rust-cid", rev = "4b2f7f9" }
-cid = { git = "https://github.com/multiformats/rust-cid", branch = "cid-as-enum" }
-libipld-core = { git = "https://github.com/ipld/libipld", branch = "cid-as-enum" }
+#cid = { git = "https://github.com/multiformats/rust-cid", branch = "cid-as-enum" }
+cid = { path = "../../rust-cid" }
+#libipld-core = { git = "https://github.com/ipld/libipld", branch = "cid-as-enum" }
+libipld-core = { path = "../../libipld/core" }

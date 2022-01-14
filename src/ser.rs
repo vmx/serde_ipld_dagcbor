@@ -405,11 +405,15 @@ where
     }
 
     #[inline]
-    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
+    fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + ser::Serialize,
     {
-        value.serialize(self)
+        if name == CID_SERDE_PRIVATE_IDENTIFIER {
+            value.serialize(&mut CidSerializer(self))
+        } else {
+            value.serialize(self)
+        }
     }
 
     #[inline]
@@ -423,21 +427,14 @@ where
     where
         T: ?Sized + ser::Serialize,
     {
-        if name == CID_SERDE_PRIVATE_IDENTIFIER
-            && variant_index == 0
-            && variant == CID_SERDE_PRIVATE_IDENTIFIER
-        {
-            value.serialize(&mut CidSerializer(self))
+        if self.enum_as_map {
+            self.write_u64(5, 1u64)?;
+            variant.serialize(&mut *self)?;
         } else {
-            if self.enum_as_map {
-                self.write_u64(5, 1u64)?;
-                variant.serialize(&mut *self)?;
-            } else {
-                self.writer.write_all(&[4 << 5 | 2]).map_err(|e| e.into())?;
-                self.serialize_unit_variant(name, variant_index, variant)?;
-            }
-            value.serialize(self)
+            self.writer.write_all(&[4 << 5 | 2]).map_err(|e| e.into())?;
+            self.serialize_unit_variant(name, variant_index, variant)?;
         }
+        value.serialize(self)
     }
 
     #[inline]

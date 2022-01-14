@@ -99,9 +99,8 @@ fn test_cid_bytes_without_tag() {
 
 /// This test checks the behaviour when `#[serde(untagged)]` is used with a [`Cid`].
 ///
-/// If the enum would match a CID, it will return an error, as CIDs are represented as enums, which
-/// aren't supported by `#[serde[untagged])`. If it matches something else, e.g.
-/// `serde_bytes::BytesBuf`, then it will correctly match that.
+/// It works as long as the CID has a different shape, compared to the other variants. A CID is
+/// a newtype struct that contains bytes. If the other variant is e.g. just bytes, then it works.
 #[test]
 fn test_cid_in_untagged_union() {
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -117,9 +116,9 @@ fn test_cid_in_untagged_union() {
         0x83, 0xbf, 0xa0, 0xf9, 0x8a, 0x5e, 0x88, 0x62, 0x66, 0xe7, 0xae,
     ];
 
-    let decoded_cid: Result<Untagged, _> = from_slice(&cbor_cid);
-    // Error is `untagged and internally tagged enums do not support enum input`.
-    assert!(decoded_cid.unwrap_err().is_data());
+    let decoded_cid: Untagged = from_slice(&cbor_cid).unwrap();
+    let cid = Cid::try_from(&cbor_cid[5..]).unwrap();
+    assert_eq!(decoded_cid, Untagged::Link(cid));
 
     // The CID without the tag 42 prefix
     let cbor_bytes = &cbor_cid[2..];
@@ -130,13 +129,10 @@ fn test_cid_in_untagged_union() {
     assert_eq!(decoded_bytes, Untagged::Bytes(bytes));
 }
 
-/// This test checks the behaviour when `#[serde(untagged)]` is used with a [`Cid`].
+/// This test checks the behaviour when `#[serde(untagged)]` is used with a [`Cid`] and another
+/// variant that also is a newtype struct that contains bytes.
 ///
-/// If the enum would match a CID, it will return an error, as CIDs are represented as enums, which
-/// aren't supported by `#[serde[untagged])`. If it matches something else, e.g.
-/// [`serde_bytes::BytesBuf`], then it will correctly match that.
-///
-/// This specifically tests if both, the CID as well as the bytes are wrapped in a newtype struct.
+/// In this case the variants cannot be distinguished and it will always return the first variant.
 #[test]
 fn test_cid_in_untagged_union_with_newtype() {
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -155,10 +151,13 @@ fn test_cid_in_untagged_union_with_newtype() {
         0x83, 0xbf, 0xa0, 0xf9, 0x8a, 0x5e, 0x88, 0x62, 0x66, 0xe7, 0xae,
     ];
 
-    // Enums are not supported within `#[serde(untagged)]`.
-    let decoded_cid: Result<Untagged, _> = from_slice(&cbor_cid);
-    // Error is `untagged and internally tagged enums do not support enum input`.
-    assert!(decoded_cid.unwrap_err().is_data());
+    let try_decode_cid_but_end_up_with_bytes: Untagged = from_slice(&cbor_cid).unwrap();
+    // It was decoded as a CID, hence the prefix with the tag and byte identifier was stripped.
+    let bytes = cbor_cid[5..].to_vec();
+    assert_eq!(
+        try_decode_cid_but_end_up_with_bytes,
+        Untagged::MyBytes(Foo(bytes))
+    );
 
     // The CID without the tag 42 prefix
     let cbor_bytes = &cbor_cid[2..];
