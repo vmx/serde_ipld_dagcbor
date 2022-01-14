@@ -6,8 +6,7 @@ use core::marker::PhantomData;
 use core::result;
 use core::str;
 use half::f16;
-use serde::{de, forward_to_deserialize_any};
-use serde_bytes::ByteBuf;
+use serde::de;
 use std::convert::TryFrom;
 #[cfg(feature = "std")]
 use std::io;
@@ -1107,86 +1106,6 @@ where
             de::Unexpected::UnitVariant,
             &"struct variant",
         ))
-    }
-}
-
-// From https://github.com/honsunrise/path-value/blob/d5eb3283f68b82e73cbc627889c32d32d484a009/src/value/de.rs#L141-L162
-struct StrDeserializer<'a>(&'a str);
-
-impl<'de, 'a: 'de> de::Deserializer<'de> for StrDeserializer<'a> {
-    type Error = Error;
-
-    #[inline]
-    fn deserialize_any<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-        visitor.visit_borrowed_str(self.0)
-    }
-
-    forward_to_deserialize_any! {
-        bool u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char str string seq
-        bytes byte_buf map struct unit enum newtype_struct
-        identifier ignored_any unit_struct tuple_struct tuple option
-    }
-}
-
-struct BytesDeserializer(ByteBuf);
-
-impl<'de> de::Deserializer<'de> for BytesDeserializer {
-    type Error = Error;
-
-    #[inline]
-    fn deserialize_any<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-        visitor.visit_bytes(&self.0)
-    }
-
-    forward_to_deserialize_any! {
-        bool u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char str string seq
-        bytes byte_buf map struct unit enum newtype_struct
-        identifier ignored_any unit_struct tuple_struct tuple option
-    }
-}
-
-struct CidAlreadyParsed(ByteBuf);
-
-impl<'de> de::EnumAccess<'de> for CidAlreadyParsed {
-    type Error = Error;
-    type Variant = Self;
-
-    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
-    where
-        V: de::DeserializeSeed<'de>,
-    {
-        // This is the Serde way of saying `let value = CID_SERDE_PRIVATE_IDENTIFIER;`.
-        let value = seed.deserialize(StrDeserializer(CID_SERDE_PRIVATE_IDENTIFIER))?;
-        Ok((value, self))
-    }
-}
-
-impl<'de> de::VariantAccess<'de> for CidAlreadyParsed {
-    type Error = Error;
-
-    fn unit_variant(self) -> Result<()> {
-        unreachable!();
-    }
-
-    fn newtype_variant_seed<S>(self, seed: S) -> Result<S::Value>
-    where
-        S: de::DeserializeSeed<'de>,
-    {
-        seed.deserialize(BytesDeserializer(self.0))
-    }
-
-    fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        unreachable!();
-    }
-
-    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        unreachable!();
     }
 }
 
