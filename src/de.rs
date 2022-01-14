@@ -1,14 +1,12 @@
 //! Deserialization.
 
 use cid::serde::CID_SERDE_PRIVATE_IDENTIFIER;
-use cid::Cid;
 use core::f32;
 use core::marker::PhantomData;
 use core::result;
 use core::str;
 use half::f16;
 use serde::{de, forward_to_deserialize_any};
-use serde::Deserialize as _;
 use serde_bytes::ByteBuf;
 use std::convert::TryFrom;
 #[cfg(feature = "std")]
@@ -584,32 +582,9 @@ where
 
             match de.read.read(len)? {
                 EitherLifetime::Long(buf) | EitherLifetime::Short(buf) => {
-                    // In DAG-CBOR the CID is prefixed with a null byte, strip that off.
-                    //let foo = visitor.visit_bytes(&buf[1..]);
-                    //foo
-                    //let foo = visitor.visit_enum(CidVariantAccess(de));
-                    //foo
-                    //let foo = visitor.visit_enum(CidVariantAccess(de));
-                    let foo = visitor.visit_enum(CidAlreadyParsed(ByteBuf::from(&buf[1..])));
-                    foo
-
-                    //let mut len = 1;
-                    //let foo = visitor.visit_enum(VariantAccess {
-                    //    seq: SeqAccess { de, len: &mut len },
-                    //})?;
-                    //Ok(foo)
-                    //Cid::try_from(&buf[1..])
-                    //    .map_err(|err| de::Error::custom(format!("Failed to deserialize CID: {}", err)))
+                    visitor.visit_enum(CidAlreadyParsed(ByteBuf::from(&buf[1..])))
                 }
             }
-
-            ////let cid = Cid::deserialize();
-            //let mut cid_deserializer = CidDeserializer(de);
-            //// Use `visit_newtype_struct()` as entry point to be able to switch to another the
-            //// `CidDeserializer` and `CidVisitor`.
-            //visitor.visit_newtype_struct(&mut cid_deserializer)
-            ////visitor.visit_bytes()
-            ////cid_deserializer.deserialize_bytes(visitor)
         })
     }
 
@@ -858,17 +833,6 @@ where
     {
         // TODO vmx 2022-01-12: Check also for variants
         if name == CID_SERDE_PRIVATE_IDENTIFIER {
-            //return self.deserialize_bytes(visitor)
-            //return self.parse_value(visitor)
-            //let mut len = 1;
-            //let foo = visitor.visit_enum(VariantAccess {
-            //    seq: SeqAccess {
-            //        de: self,
-            //        len: &mut len,
-            //    },
-            //})?;
-            //let foo = visitor.visit_enum(CidVariantAccess(self))?;
-            //return Ok(foo);
             // TODO vmx 2022-01-13: This should probably be restricted to parsing CIDs only and
             // error if any other value is parsed.
             return self.parse_value(visitor)
@@ -1201,10 +1165,8 @@ impl<'de, 'a: 'de> de::Deserializer<'de> for StrDeserializer<'a> {
 }
 
 
-//struct BytesDeserializer<'a>(&'a [u8]);
 struct BytesDeserializer(ByteBuf);
 
-//impl<'de, 'a: 'de> de::Deserializer<'de> for BytesDeserializer<'a> {
 impl<'de> de::Deserializer<'de> for BytesDeserializer {
     type Error = Error;
 
@@ -1221,118 +1183,50 @@ impl<'de> de::Deserializer<'de> for BytesDeserializer {
 }
 
 
-//struct CidAlreadyParsed<'a>(&'a [u8]);
 struct CidAlreadyParsed(ByteBuf);
 
-//impl<'de, 'a: 'de> de::EnumAccess<'de> for CidAlreadyParsed<'a>
 impl<'de> de::EnumAccess<'de> for CidAlreadyParsed
 {
     type Error = Error;
     type Variant = Self;
 
-    fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant)>
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
     where
         V: de::DeserializeSeed<'de>,
     {
         // This is the Serde way of saying `let value = CID_SERDE_PRIVATE_IDENTIFIER;`.
-        // TODO vmx 2022-01-13: Check if this can be optimized to more direct calls like e.g.
-        // `seed.deserialize_str()` or so.
-        //let value = seed.deserialize(BytesDeserializer(self.0.clone()))?;
         let value = seed.deserialize(StrDeserializer(CID_SERDE_PRIVATE_IDENTIFIER))?;
         Ok((value, self))
     }
 }
 
-//impl<'de, 'a: 'de> de::VariantAccess<'de> for CidAlreadyParsed<'a>
 impl<'de> de::VariantAccess<'de> for CidAlreadyParsed
     {
     type Error = Error;
 
-    fn unit_variant(mut self) -> Result<()> {
-        unimplemented!();
+    fn unit_variant(self) -> Result<()> {
+        unreachable!();
     }
 
-    fn newtype_variant_seed<S>(mut self, seed: S) -> Result<S::Value>
+    fn newtype_variant_seed<S>(self, seed: S) -> Result<S::Value>
     where
         S: de::DeserializeSeed<'de>,
     {
-        println!("vmx: cbor variantaccess: cid already parsed: newtype variant seed");
-        let bytes = seed.deserialize(BytesDeserializer(self.0));
-        bytes
+        seed.deserialize(BytesDeserializer(self.0))
     }
 
-    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!();
+        unreachable!();
     }
 
-    fn struct_variant<V>(mut self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!();
-    }
-}
-
-
-/// An enum variant access specifically for CIDs.
-///
-/// CIDs are encoded as enums and need special decoding rules.
-//struct CidVariantAccess<'a, R>(&'a mut Deserializer<R>);
-//struct CidVariantAccess;
-struct CidVariantAccess<'a, R>(&'a mut Deserializer<R>);
-
-
-impl<'a, 'de, R> de::EnumAccess<'de> for CidVariantAccess<'a, R>
-where
-    R: Read<'de>,
-{
-    type Error = Error;
-    type Variant = Self;
-
-    fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant)>
-    where
-        V: de::DeserializeSeed<'de>,
-    {
-        // This is the Serde way of saying `let value = CID_SERDE_PRIVATE_IDENTIFIER;`.
-        // TODO vmx 2022-01-13: Check if this can be optimized to more direct calls like e.g.
-        // `seed.deserialize_str()` or so.
-        let value = seed.deserialize(StrDeserializer(CID_SERDE_PRIVATE_IDENTIFIER))?;
-        Ok((value, self))
-    }
-}
-
-impl<'a, 'de, R> de::VariantAccess<'de> for CidVariantAccess<'a, R>
-where
-    R: Read<'de>,
-    {
-    type Error = Error;
-
-    fn unit_variant(mut self) -> Result<()> {
-        unimplemented!();
-    }
-
-    fn newtype_variant_seed<S>(mut self, seed: S) -> Result<S::Value>
-    where
-        S: de::DeserializeSeed<'de>,
-    {
-        seed.deserialize(self.0)
-    }
-
-    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        unimplemented!();
-    }
-
-    fn struct_variant<V>(mut self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
-    where
-        V: de::Visitor<'de>,
-    {
-        unimplemented!();
+        unreachable!();
     }
 }
 

@@ -405,7 +405,7 @@ where
     }
 
     #[inline]
-    fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
+    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + ser::Serialize,
     {
@@ -432,8 +432,7 @@ where
             && variant_index == 0
             && variant == CID_SERDE_PRIVATE_IDENTIFIER
         {
-            let mut cid_serializer = CidSerializer(self);
-            value.serialize(&mut cid_serializer)
+            value.serialize(&mut CidSerializer(self))
         } else {
             if self.enum_as_map {
                 self.write_u64(5, 1u64)?;
