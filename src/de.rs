@@ -860,15 +860,18 @@ where
         if name == CID_SERDE_PRIVATE_IDENTIFIER {
             //return self.deserialize_bytes(visitor)
             //return self.parse_value(visitor)
-            let mut len = 1;
+            //let mut len = 1;
             //let foo = visitor.visit_enum(VariantAccess {
             //    seq: SeqAccess {
             //        de: self,
             //        len: &mut len,
             //    },
             //})?;
-            let foo = visitor.visit_enum(CidVariantAccess(self))?;
-            return Ok(foo);
+            //let foo = visitor.visit_enum(CidVariantAccess(self))?;
+            //return Ok(foo);
+            // TODO vmx 2022-01-13: This should probably be restricted to parsing CIDs only and
+            // error if any other value is parsed.
+            return self.parse_value(visitor)
         }
 
         match self.peek()? {
