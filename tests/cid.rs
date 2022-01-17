@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use cid::Cid;
 use libipld_core::ipld::Ipld;
+use libipld_derive::DeserializeIpld;
+use serde_bytes::ByteBuf;
 use serde_cbor::{from_slice, to_vec};
 use serde_derive::{Deserialize, Serialize};
 
@@ -97,16 +99,13 @@ fn test_cid_bytes_without_tag() {
     from_slice::<Cid>(&cbor_bytes).expect_err("should have failed to decode bytes as cid");
 }
 
-/// This test checks the behaviour when `#[serde(untagged)]` is used with a [`Cid`].
-///
-/// It works as long as the CID has a different shape, compared to the other variants. A CID is
-/// a newtype struct that contains bytes. If the other variant is e.g. just bytes, then it works.
+/// This test checks the behaviour when `#[ipld(repr = "kinded")]` is used with a [`Cid`].
 #[test]
 fn test_cid_in_untagged_union() {
-    #[derive(Debug, Deserialize, PartialEq, Serialize)]
-    #[serde(untagged)]
+    #[derive(Debug, DeserializeIpld, PartialEq)]
+    #[ipld(repr = "kinded")]
     pub enum Untagged {
-        Bytes(#[serde(with = "serde_bytes")] Vec<u8>),
+        Bytes(ByteBuf),
         Link(Cid),
     }
 
@@ -126,20 +125,18 @@ fn test_cid_in_untagged_union() {
     // The CBOR decoded bytes don't contain the prefix with the bytes type identifier and the
     // length.
     let bytes = cbor_bytes[2..].to_vec();
-    assert_eq!(decoded_bytes, Untagged::Bytes(bytes));
+    assert_eq!(decoded_bytes, Untagged::Bytes(ByteBuf::from(bytes)));
 }
 
-/// This test checks the behaviour when `#[serde(untagged)]` is used with a [`Cid`] and another
-/// variant that also is a newtype struct that contains bytes.
-///
-/// In this case the variants cannot be distinguished and it will always return the first variant.
+/// This test checks the behaviour when `#[ipld(repr = "kinded")]` is used with a [`Cid`] and
+/// another variant that also is a newtype struct that contains bytes.
 #[test]
 fn test_cid_in_untagged_union_with_newtype() {
     #[derive(Debug, Deserialize, PartialEq, Serialize)]
     pub struct Foo(#[serde(with = "serde_bytes")] Vec<u8>);
 
-    #[derive(Debug, Deserialize, PartialEq, Serialize)]
-    #[serde(untagged)]
+    #[derive(Debug, DeserializeIpld, PartialEq)]
+    #[ipld(repr = "kinded")]
     pub enum Untagged {
         MyBytes(Foo),
         Link(Cid),
@@ -151,13 +148,10 @@ fn test_cid_in_untagged_union_with_newtype() {
         0x83, 0xbf, 0xa0, 0xf9, 0x8a, 0x5e, 0x88, 0x62, 0x66, 0xe7, 0xae,
     ];
 
-    let try_decode_cid_but_end_up_with_bytes: Untagged = from_slice(&cbor_cid).unwrap();
-    // It was decoded as a CID, hence the prefix with the tag and byte identifier was stripped.
-    let bytes = cbor_cid[5..].to_vec();
-    assert_eq!(
-        try_decode_cid_but_end_up_with_bytes,
-        Untagged::MyBytes(Foo(bytes))
-    );
+    let decoded_cid: Untagged = from_slice(&cbor_cid).unwrap();
+    // The actual CID is without the CBOR tag 42, the byte identifier and the data length.
+    let cid = Cid::try_from(&cbor_cid[5..]).unwrap();
+    assert_eq!(decoded_cid, Untagged::Link(cid));
 
     // The CID without the tag 42 prefix
     let cbor_bytes = &cbor_cid[2..];

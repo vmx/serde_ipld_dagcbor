@@ -24,6 +24,7 @@ serde = { version = "1.0.14", default-features = false }
 [dev-dependencies]
 serde_derive = { version = "1.0.14", default-features = false }
 libipld-core = "0.12.0"
+libipld-derive = "0.1.0"
 serde_bytes = "0.11.5"
 
 [features]
@@ -42,3 +43,5 @@ cid = { git = "https://github.com/multiformats/rust-cid", branch = "cid-as-newty
 #cid = { path = "../../rust-cid" }
 libipld-core = { git = "https://github.com/ipld/libipld", branch = "cid-as-newtype-struct" }
 #libipld-core = { path = "../../libipld/core" }
+libipld-derive = { git = "https://github.com/ipld/libipld", branch = "cid-as-newtype-struct" }
+#libipld-derive = { path = "../../libipld/derive" }
