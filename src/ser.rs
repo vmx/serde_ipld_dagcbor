@@ -56,6 +56,8 @@ pub struct Serializer<W> {
     writer: W,
     packed: bool,
     enum_as_map: bool,
+    // True if the item to be serialized is a CID.
+    is_cid: bool,
 }
 
 impl<W> Serializer<W>
@@ -71,6 +73,7 @@ where
             writer,
             packed: false,
             enum_as_map: true,
+            is_cid: false,
         }
     }
 
@@ -389,15 +392,11 @@ where
     }
 
     #[inline]
-    fn serialize_newtype_struct<T>(self, name: &'static str, value: &T) -> Result<()>
+    fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<()>
     where
         T: ?Sized + ser::Serialize,
     {
-        if name == CID_SERDE_PRIVATE_IDENTIFIER {
-            value.serialize(&mut CidSerializer(self))
-        } else {
-            value.serialize(self)
-        }
+        value.serialize(self)
     }
 
     #[inline]
@@ -449,7 +448,14 @@ where
         variant: &'static str,
         len: usize,
     ) -> Result<&'a mut Serializer<W>> {
-        if self.enum_as_map {
+        if name == CID_SERDE_PRIVATE_IDENTIFIER
+            && variant_index == 0
+            && variant == CID_SERDE_PRIVATE_IDENTIFIER
+            && len == 1
+        {
+            self.is_cid = true;
+            Ok(self)
+        } else if self.enum_as_map {
             self.write_u64(5, 1u64)?;
             variant.serialize(&mut *self)?;
             self.serialize_tuple(len)
@@ -595,7 +601,13 @@ where
     where
         T: ?Sized + ser::Serialize,
     {
-        value.serialize(&mut **self)
+        if self.is_cid {
+            value.serialize(&mut CidSerializer(self))?;
+            self.is_cid = false;
+            Ok(())
+        } else {
+            value.serialize(&mut **self)
+        }
     }
 
     #[inline]

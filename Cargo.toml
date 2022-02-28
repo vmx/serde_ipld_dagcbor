@@ -35,4 +35,5 @@ std = ["serde/std" ]
 unsealed_read_write = []
 
 [patch.crates-io]
-libipld-core = { git = "https://github.com/ipld/libipld", branch = "ipld-serde" }
+libipld-core = { git = "https://github.com/ipld/libipld", branch = "cid-as-enum" }
+cid = { git = "https://github.com/ipld/rust-cid", branch = "cid-as-enum" }
