@@ -563,7 +563,7 @@ where
     where
         V: de::Visitor<'de>,
     {
-        self.recursion_checked(|de| visitor.visit_newtype_struct(&mut CidDeserializer(de)))
+        self.recursion_checked(|de| visitor.visit_enum(&mut CidDeserializer(de)))
     }
 
     // Don't warn about the `unreachable!` in case
@@ -783,19 +783,11 @@ where
     }
 
     #[inline]
-    fn deserialize_newtype_struct<V>(self, name: &str, visitor: V) -> Result<V::Value>
+    fn deserialize_newtype_struct<V>(self, _name: &str, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        if name == CID_SERDE_PRIVATE_IDENTIFIER {
-            // It's only valid if there is really an encoded CID.
-            match self.parse_u16() {
-                Ok(CBOR_TAGS_MAJOR_TYPE_AND_CID) => self.parse_cid(visitor),
-                _ => Err(self.error(ErrorCode::UnexpectedCode)),
-            }
-        } else {
-            visitor.visit_newtype_struct(self)
-        }
+        visitor.visit_newtype_struct(self)
     }
 
     // Unit variants are encoded as just the variant identifier.
@@ -804,59 +796,67 @@ where
     #[inline]
     fn deserialize_enum<V>(
         self,
-        _name: &str,
-        _variants: &'static [&'static str],
+        name: &str,
+        variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        match self.peek()? {
-            Some(byte @ 0x80..=0x9f) => {
-                if !self.accept_legacy_enums {
-                    return Err(self.error(ErrorCode::WrongEnumFormat));
-                }
-                self.consume();
-                match byte {
-                    0x80..=0x97 => self.parse_enum(byte as usize - 0x80, visitor),
-                    0x98 => {
-                        let len = self.parse_u8()?;
-                        self.parse_enum(len as usize, visitor)
+        if name == CID_SERDE_PRIVATE_IDENTIFIER && variants == [CID_SERDE_PRIVATE_IDENTIFIER] {
+            // It's only valid if there is really an encoded CID.
+            match self.parse_u16() {
+                Ok(CBOR_TAGS_MAJOR_TYPE_AND_CID) => self.parse_cid(visitor),
+                _ => Err(self.error(ErrorCode::UnexpectedCode)),
+            }
+        } else {
+            match self.peek()? {
+                Some(byte @ 0x80..=0x9f) => {
+                    if !self.accept_legacy_enums {
+                        return Err(self.error(ErrorCode::WrongEnumFormat));
                     }
-                    0x99 => {
-                        let len = self.parse_u16()?;
-                        self.parse_enum(len as usize, visitor)
-                    }
-                    0x9a => {
-                        let len = self.parse_u32()?;
-                        self.parse_enum(len as usize, visitor)
-                    }
-                    0x9b => {
-                        let len = self.parse_u64()?;
-                        if len > usize::max_value() as u64 {
-                            return Err(self.error(ErrorCode::LengthOutOfRange));
+                    self.consume();
+                    match byte {
+                        0x80..=0x97 => self.parse_enum(byte as usize - 0x80, visitor),
+                        0x98 => {
+                            let len = self.parse_u8()?;
+                            self.parse_enum(len as usize, visitor)
                         }
-                        self.parse_enum(len as usize, visitor)
-                    }
-                    0x9c..=0x9e => Err(self.error(ErrorCode::UnassignedCode)),
-                    0x9f => self.parse_indefinite_enum(visitor),
+                        0x99 => {
+                            let len = self.parse_u16()?;
+                            self.parse_enum(len as usize, visitor)
+                        }
+                        0x9a => {
+                            let len = self.parse_u32()?;
+                            self.parse_enum(len as usize, visitor)
+                        }
+                        0x9b => {
+                            let len = self.parse_u64()?;
+                            if len > usize::max_value() as u64 {
+                                return Err(self.error(ErrorCode::LengthOutOfRange));
+                            }
+                            self.parse_enum(len as usize, visitor)
+                        }
+                        0x9c..=0x9e => Err(self.error(ErrorCode::UnassignedCode)),
+                        0x9f => self.parse_indefinite_enum(visitor),
 
-                    _ => unreachable!(),
+                        _ => unreachable!(),
+                    }
                 }
-            }
-            Some(0xa1) => {
-                if !self.accept_standard_enums {
-                    return Err(self.error(ErrorCode::WrongEnumFormat));
+                Some(0xa1) => {
+                    if !self.accept_standard_enums {
+                        return Err(self.error(ErrorCode::WrongEnumFormat));
+                    }
+                    self.consume();
+                    self.parse_enum_map(visitor)
                 }
-                self.consume();
-                self.parse_enum_map(visitor)
-            }
-            None => Err(self.error(ErrorCode::EofWhileParsingValue)),
-            _ => {
-                if !self.accept_standard_enums && !self.accept_legacy_enums {
-                    return Err(self.error(ErrorCode::WrongEnumFormat));
+                None => Err(self.error(ErrorCode::EofWhileParsingValue)),
+                _ => {
+                    if !self.accept_standard_enums && !self.accept_legacy_enums {
+                        return Err(self.error(ErrorCode::WrongEnumFormat));
+                    }
+                    visitor.visit_enum(UnitVariantAccess { de: self })
                 }
-                visitor.visit_enum(UnitVariantAccess { de: self })
             }
         }
     }
@@ -1347,6 +1347,26 @@ where
     }
 }
 
+/// Dummy deserializer to deserialize an existing string.
+///
+/// From https://github.com/honsunrise/path-value/blob/d5eb3283f68b82e73cbc627889c32d32d484a009/src/value/de.rs#L141-L162
+struct StrDeserializer<'a>(&'a str);
+
+impl<'de, 'a: 'de> de::Deserializer<'de> for StrDeserializer<'a> {
+    type Error = Error;
+
+    #[inline]
+    fn deserialize_any<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+        visitor.visit_borrowed_str(self.0)
+    }
+
+    forward_to_deserialize_any! {
+        bool byte_buf bytes char enum f32 f64  i8 i16 i32 i64 identifier ignored_any map
+        newtype_struct option seq str string struct tuple tuple_struct  u8 u16 u32 u64 unit
+        unit_struct
+    }
+}
+
 /// Deserialize a DAG-CBOR encoded CID.
 ///
 /// This is without the CBOR tag information. It is only the CBOR byte string identifier (major
@@ -1401,23 +1421,69 @@ where
         }
     }
 
-    fn deserialize_newtype_struct<V: de::Visitor<'de>>(
-        self,
-        name: &str,
-        visitor: V,
-    ) -> Result<V::Value> {
-        if name == CID_SERDE_PRIVATE_IDENTIFIER {
+    forward_to_deserialize_any! {
+        bool byte_buf char enum f32 f64  i8 i16 i32 i64 identifier ignored_any map newtype_struct
+        option seq str string struct tuple tuple_struct  u8 u16 u32 u64 unit unit_struct
+    }
+}
+
+impl<'de, 'a, R> de::EnumAccess<'de> for &'a mut CidDeserializer<'a, R>
+where
+    R: Read<'de>,
+{
+    type Error = Error;
+    // We just implement `VariantAccess` for `CidDeserializer`.
+    type Variant = Self;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        // This is the Serde way of saying `let value = CID_SERDE_PRIVATE_IDENTIFIER;`.
+        let key = seed.deserialize(StrDeserializer(CID_SERDE_PRIVATE_IDENTIFIER))?;
+        // The `VariantAccess` implementation of the `CidDeserializer` will be used to deserialize
+        // the CID, hence return itself.
+        Ok((key, self))
+    }
+}
+
+impl<'de, 'a, R> de::VariantAccess<'de> for &'a mut CidDeserializer<'a, R>
+where
+    R: Read<'de>,
+{
+    type Error = Error;
+
+    fn unit_variant(self) -> Result<()> {
+        unreachable!();
+    }
+
+    fn newtype_variant_seed<T>(self, _seed: T) -> Result<T::Value>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        unreachable!();
+    }
+
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        if len == 1 {
+            use serde::Deserializer;
+            // This is not how tuple variants usually work. This is a hack in order to get a CID
+            // out.
             self.deserialize_bytes(visitor)
         } else {
-            Err(Error::message(format!(
-                "This deserializer must not be called on newtype structs other than one named `{}`",
-                CID_SERDE_PRIVATE_IDENTIFIER
-            )))?
+            Err(Error::message(
+                "CidDeserializer only supports deserializing CIDs",
+            ))
         }
     }
 
-    forward_to_deserialize_any! {
-        bool byte_buf char enum f32 f64 i8 i16 i32 i64 identifier ignored_any map option seq str
-        string struct tuple tuple_struct u8 u16 u32 u64 unit unit_struct
+    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        unreachable!();
     }
 }
