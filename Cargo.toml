@@ -15,7 +15,11 @@ categories = ["encoding"]
 edition = "2018"
 
 [dependencies]
+# TODO vmx 2022-04-11: Check if/when `use_std`/`use_alloc` should be enaabled.
+cbor4ii = { version = "0.2.10", features = ["serde1", "use_std"] }
+#cbor4ii = { path = "../../cbor4ii", features = ["serde1", "use_std"] }
 cid = { version = "0.8.0", features = ["serde-codec"] }
+delegate-attr = "0.2.9"
 half = "1.2.0"
 serde = { version = "1.0.14", default-features = false }
 

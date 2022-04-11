@@ -87,15 +87,4 @@ mod std_tests {
         spam: u32,
         eggs: u32,
     }
-
-    #[test]
-    fn small_struct() {
-        // Test whether the packed format works.
-        // Field names should not be serialized,
-        // instead field indizes are serialized.
-        let value = SmallStruct { spam: 17, eggs: 42 };
-        let data = serde_ipld_dagcbor::ser::to_vec_packed(&value).unwrap();
-        let reference = b"\xa2\x00\x11\x01\x18\x2a";
-        assert_eq!(data, reference);
-    }
 }

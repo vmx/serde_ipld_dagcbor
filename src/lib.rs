@@ -312,7 +312,7 @@
 //! [128-bit integers]: https://doc.rust-lang.org/std/primitive.u128.html
 //! [#77]: https://github.com/pyfisch/cbor/issues/77
 
-#![deny(missing_docs)]
+//#![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 // When we are running tests in no_std mode we need to explicitly link std, because `cargo test`

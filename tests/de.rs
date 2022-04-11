@@ -305,6 +305,8 @@ mod std_tests {
 
         // 0.1% chance of not catching failure
         for _ in 0..10 {
+            let foo = de::from_slice::<Ipld>(expected).unwrap();
+            let bar = to_vec(&foo).unwrap();
             assert_eq!(
                 &to_vec(&de::from_slice::<Ipld>(expected).unwrap()).unwrap(),
                 expected
@@ -698,15 +700,11 @@ mod std_tests {
         );
     }
 
-    use serde_ipld_dagcbor::{de::from_slice, ser::to_vec_packed};
+    use serde_ipld_dagcbor::de::from_slice;
     use std::net::{IpAddr, Ipv4Addr};
     #[test]
     fn test_ipaddr_deserialization() {
         let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
-        let buf = to_vec_packed(&ip).unwrap();
-        let deserialized_ip = from_slice::<IpAddr>(&buf).unwrap();
-        assert_eq!(ip, deserialized_ip);
-
         let buf = to_vec(&ip).unwrap();
         let deserialized_ip = from_slice::<IpAddr>(&buf).unwrap();
         assert_eq!(ip, deserialized_ip);

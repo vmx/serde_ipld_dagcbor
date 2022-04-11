@@ -6,7 +6,7 @@ mod std_tests {
     use std::u8;
 
     use serde_ipld_dagcbor::de::from_mut_slice;
-    use serde_ipld_dagcbor::ser::{to_vec, to_vec_packed};
+    use serde_ipld_dagcbor::ser::to_vec;
     use serde_ipld_dagcbor::{from_reader, from_slice};
 
     fn to_binary(s: &'static str) -> Vec<u8> {
@@ -51,7 +51,7 @@ mod std_tests {
             #[test]
             fn $name() {
                 let expr: $ty = $expr;
-                let mut serialized = to_binary($s);
+                let serialized = to_binary($s);
                 assert_eq!(
                     to_vec(&expr).expect("ser1 works"),
                     serialized,
@@ -59,22 +59,6 @@ mod std_tests {
                 );
                 let parsed: $ty = from_slice(&serialized[..]).expect("de1 works");
                 assert_eq!(parsed, expr, "parsed result differs");
-                let packed = &to_vec_packed(&expr).expect("serializing packed")[..];
-                let parsed_from_packed: $ty = from_slice(packed).expect("parsing packed");
-                assert_eq!(parsed_from_packed, expr, "packed roundtrip fail");
-
-                let parsed: $ty = from_reader(&mut &serialized[..]).unwrap();
-                assert_eq!(parsed, expr, "parsed result differs");
-                let mut packed = to_vec_packed(&expr).expect("serializing packed");
-                let parsed_from_packed: $ty =
-                    from_reader(&mut &packed[..]).expect("parsing packed");
-                assert_eq!(parsed_from_packed, expr, "packed roundtrip fail");
-
-                let parsed: $ty = from_mut_slice(&mut serialized[..]).unwrap();
-                assert_eq!(parsed, expr, "parsed result differs");
-                let parsed_from_packed: $ty =
-                    from_mut_slice(&mut packed[..]).expect("parsing packed");
-                assert_eq!(parsed_from_packed, expr, "packed roundtrip fail");
             }
         };
     }
