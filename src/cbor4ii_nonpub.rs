@@ -3,8 +3,6 @@
 //! Some things needed for the Serde implementation are not public in the cbor4ii crate. Those are
 //! copied into this file.
 
-use core::ops::{Deref, DerefMut};
-
 use cbor4ii::core::dec;
 
 use crate::error::DecodeError;

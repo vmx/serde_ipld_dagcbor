@@ -99,6 +99,7 @@ impl<R> Deserializer<R> {
 }
 
 impl<'de, R: dec::Read<'de>> Deserializer<R> {
+    #[allow(clippy::type_complexity)]
     #[inline]
     fn try_step<'a>(
         &'a mut self,
