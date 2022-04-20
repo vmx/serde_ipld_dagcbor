@@ -41,30 +41,3 @@ pub(crate) fn pull_one<'a, R: dec::Read<'a>>(reader: &mut R) -> Result<u8, Decod
     reader.advance(1);
     Ok(byte)
 }
-
-// Copy from cbor4ii/util.rs.
-/// Executes the given function when the variables moves out of scope.
-pub(crate) struct ScopeGuard<'a, T>(pub &'a mut T, pub fn(&mut T));
-
-impl<T> Deref for ScopeGuard<'_, T> {
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
-}
-
-impl<T> DerefMut for ScopeGuard<'_, T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0
-    }
-}
-
-impl<T> Drop for ScopeGuard<'_, T> {
-    #[inline]
-    fn drop(&mut self) {
-        (self.1)(self.0);
-    }
-}
