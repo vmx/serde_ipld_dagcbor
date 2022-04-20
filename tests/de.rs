@@ -225,8 +225,8 @@ fn test_unit() {
     let unit = ();
     let v = to_vec(&unit).unwrap();
     assert_eq!(v, [0xf6], "unit is serialized as NULL.");
-    let result: () = from_slice(&v).unwrap();
-    assert_eq!(result, unit, "unit was successfully deserialized");
+    let result: Result<(), _> = from_slice(&v);
+    assert!(result.is_ok(), "unit was successfully deserialized");
 }
 
 #[test]
