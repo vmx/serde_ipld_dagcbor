@@ -10,7 +10,7 @@ use cbor4ii::core::{major, types, utils::SliceReader};
 use cid::serde::CID_SERDE_PRIVATE_IDENTIFIER;
 use serde::de::{self, Visitor};
 
-use crate::cbor4ii_nonpub::{marker, peek_one, pull_one, ScopeGuard};
+use crate::cbor4ii_nonpub::{marker, peek_one, pull_one};
 use crate::error::DecodeError;
 use crate::CBOR_TAGS_CID;
 #[cfg(feature = "std")]
@@ -100,9 +100,12 @@ impl<R> Deserializer<R> {
 
 impl<'de, R: dec::Read<'de>> Deserializer<R> {
     #[inline]
-    fn try_step(&mut self) -> Result<ScopeGuard<'_, Self>, DecodeError<R::Error>> {
+    fn try_step<'a>(
+        &'a mut self,
+    ) -> Result<scopeguard::ScopeGuard<&'a mut Self, fn(&'a mut Self) -> ()>, DecodeError<R::Error>>
+    {
         if self.reader.step_in() {
-            Ok(ScopeGuard(self, |de| de.reader.step_out()))
+            Ok(scopeguard::guard(self, |de| de.reader.step_out()))
         } else {
             Err(DecodeError::DepthLimit)
         }
@@ -286,7 +289,7 @@ impl<'de, 'a, R: dec::Read<'de>> serde::Deserializer<'de> for &'a mut Deserializ
         let byte = peek_one(&mut self.reader)?;
         if byte != marker::NULL && byte != marker::UNDEFINED {
             let mut de = self.try_step()?;
-            visitor.visit_some(&mut *de)
+            visitor.visit_some(&mut **de)
         } else {
             self.reader.advance(1);
             visitor.visit_none()
