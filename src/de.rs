@@ -16,6 +16,9 @@ use crate::CBOR_TAGS_CID;
 #[cfg(feature = "std")]
 use cbor4ii::core::utils::IoReader;
 
+/// A CBOR major type 6 (Tag), with a 1 byte tag identifier.
+const TAG_LENGTH_1: u8 = 0xd8;
+
 /// Decodes a value from CBOR data in a slice.
 ///
 /// # Examples
@@ -42,7 +45,7 @@ where
     T: de::Deserialize<'a>,
 {
     let reader = SliceReader::new(buf);
-    let mut deserializer = Deserializer::new(reader);
+    let mut deserializer = Deserializer::from_reader(reader);
     let value = serde::Deserialize::deserialize(&mut deserializer)?;
     deserializer.end()?;
     Ok(value)
@@ -76,20 +79,21 @@ where
     R: std::io::BufRead,
 {
     let reader = IoReader::new(reader);
-    let mut deserializer = Deserializer::new(reader);
+    let mut deserializer = Deserializer::from_reader(reader);
     let value = serde::Deserialize::deserialize(&mut deserializer)?;
     deserializer.end()?;
     Ok(value)
 }
 
 /// A Serde `Deserialize`r of DAG-CBOR data.
+#[derive(Debug)]
 struct Deserializer<R> {
     reader: R,
 }
 
 impl<R> Deserializer<R> {
     /// Constructs a `Deserializer` which reads from a `Read`er.
-    pub fn new(reader: R) -> Deserializer<R> {
+    pub fn from_reader(reader: R) -> Deserializer<R> {
         Deserializer { reader }
     }
 }
@@ -165,12 +169,9 @@ impl<'de, 'a, R: dec::Read<'de>> serde::Deserializer<'de> for &'a mut Deserializ
             major::STRING => de.deserialize_string(visitor),
             major::ARRAY => de.deserialize_seq(visitor),
             major::MAP => de.deserialize_map(visitor),
-            // NOTE: that this does not support untagged enum.
-            // see https://github.com/serde-rs/serde/issues/1682
             major::TAG => match byte {
-                0xc2 => de.deserialize_u128(visitor),
-                0xc3 => de.deserialize_i128(visitor),
-                0xd8 => {
+                // Only TAG 42 (CID) is supported, which fits into 1 byte.
+                TAG_LENGTH_1 => {
                     de.reader.advance(1);
                     de.deserialize_cid(visitor)
                 }
@@ -298,8 +299,7 @@ impl<'de, 'a, R: dec::Read<'de>> serde::Deserializer<'de> for &'a mut Deserializ
         V: Visitor<'de>,
     {
         let byte = pull_one(&mut self.reader)?;
-        // 0 length array
-        if byte == (major::ARRAY << 5) {
+        if byte == marker::NULL {
             visitor.visit_unit()
         } else {
             Err(DecodeError::TypeMismatch { name: "unit", byte })

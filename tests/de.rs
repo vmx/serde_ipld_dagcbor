@@ -221,6 +221,15 @@ fn test_option_none_roundtrip() {
 }
 
 #[test]
+fn test_unit() {
+    let unit = ();
+    let v = to_vec(&unit).unwrap();
+    assert_eq!(v, [0xf6], "unit is serialized as NULL.");
+    let result: () = from_slice(&v).unwrap();
+    assert_eq!(result, unit, "unit was successfully deserialized");
+}
+
+#[test]
 fn test_variable_length_map() {
     let slice = b"\xbf\x67\x6d\x65\x73\x73\x61\x67\x65\x64\x70\x6f\x6e\x67\xff";
     let ipld: Ipld = de::from_slice(slice).unwrap();
