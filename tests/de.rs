@@ -159,7 +159,10 @@ fn test_rejected_tag() {
         de::from_slice(&[0xd9, 0xd9, 0xf7, 0x66, 0x66, 0x6f, 0x6f, 0x62, 0x61, 0x72]);
     assert!(matches!(
         ipld.unwrap_err(),
-        DecodeError::Unsupported { byte: 0xd9 }
+        DecodeError::TypeMismatch {
+            name: "CBOR tag",
+            byte: 0xf7
+        }
     ));
 }
 

@@ -16,9 +16,6 @@ use crate::CBOR_TAGS_CID;
 #[cfg(feature = "std")]
 use cbor4ii::core::utils::IoReader;
 
-/// A CBOR major type 6 (Tag), with a 1 byte tag identifier.
-const TAG_LENGTH_1: u8 = 0xd8;
-
 /// Decodes a value from CBOR data in a slice.
 ///
 /// # Examples
@@ -117,12 +114,13 @@ impl<'de, R: dec::Read<'de>> Deserializer<R> {
     where
         V: Visitor<'de>,
     {
-        let tag_value = pull_one(&mut self.reader)?;
-        match tag_value {
+        let tag = dec::TagStart::decode(&mut self.reader)?;
+
+        match tag.0 {
             CBOR_TAGS_CID => visitor.visit_newtype_struct(&mut CidDeserializer(self)),
             _ => Err(DecodeError::TypeMismatch {
                 name: "CBOR tag",
-                byte: tag_value,
+                byte: tag.0 as u8,
             }),
         }
     }
@@ -173,14 +171,8 @@ impl<'de, 'a, R: dec::Read<'de>> serde::Deserializer<'de> for &'a mut Deserializ
             major::STRING => de.deserialize_string(visitor),
             major::ARRAY => de.deserialize_seq(visitor),
             major::MAP => de.deserialize_map(visitor),
-            major::TAG => match byte {
-                // Only TAG 42 (CID) is supported, which fits into 1 byte.
-                TAG_LENGTH_1 => {
-                    de.reader.advance(1);
-                    de.deserialize_cid(visitor)
-                }
-                _ => Err(DecodeError::Unsupported { byte }),
-            },
+            // The only supported tag is tag 42 (CID).
+            major::TAG => de.deserialize_cid(visitor),
             major::SIMPLE => match byte {
                 marker::FALSE => {
                     de.reader.advance(1);
@@ -332,12 +324,7 @@ impl<'de, 'a, R: dec::Read<'de>> serde::Deserializer<'de> for &'a mut Deserializ
         V: Visitor<'de>,
     {
         if name == CID_SERDE_PRIVATE_IDENTIFIER {
-            let byte = pull_one(&mut self.reader)?;
-            match byte {
-                // CBOR major tag, that should follow CID tag 42.
-                0xd8 => self.deserialize_cid(visitor),
-                _ => Err(DecodeError::TypeMismatch { name: "Tag", byte }),
-            }
+            self.deserialize_cid(visitor)
         } else {
             visitor.visit_newtype_struct(self)
         }
@@ -644,7 +631,6 @@ where
 /// The reason for not including the CBOR tag information is the [`Value`] implementation. That one
 /// starts to parse the bytes, before we could interfere. If the data only includes a CID, we are
 /// parsing over the tag to determine whether it is a CID or not and go from there.
-//struct CidDeserializer<'a, 'b, R: dec::Read<'b>>(&'a mut Deserializer<'b, R>);
 struct CidDeserializer<'a, R>(&'a mut Deserializer<R>);
 
 impl<'de, 'a, R: dec::Read<'de>> de::Deserializer<'de> for &'a mut CidDeserializer<'a, R> {
@@ -662,22 +648,11 @@ impl<'de, 'a, R: dec::Read<'de>> de::Deserializer<'de> for &'a mut CidDeserializ
         match dec::if_major(byte) {
             major::BYTES => {
                 // CBOR encoded CIDs have a zero byte prefix we have to remove.
-                match <types::Bytes<Cow<[u8]>>>::decode(&mut self.0.reader)?.0 {
-                    Cow::Borrowed(buf) => {
-                        if buf.len() <= 1 {
-                            Err(DecodeError::Msg("Invalid CID".into()))
-                        } else {
-                            visitor.visit_borrowed_bytes(&buf[1..])
-                        }
-                    }
-                    Cow::Owned(mut buf) => {
-                        if buf.len() <= 1 {
-                            Err(DecodeError::Msg("Invalid CID".into()))
-                        } else {
-                            buf.remove(0);
-                            visitor.visit_byte_buf(buf)
-                        }
-                    }
+                let buf = <types::Bytes<&[u8]>>::decode(&mut self.0.reader)?.0;
+                if buf.len() <= 1 {
+                    Err(DecodeError::Msg("Invalid CID".into()))
+                } else {
+                    visitor.visit_borrowed_bytes(&buf[1..])
                 }
             }
             _ => Err(DecodeError::Unsupported { byte }),

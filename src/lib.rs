@@ -139,4 +139,4 @@ pub use crate::ser::to_vec;
 pub use crate::ser::to_writer;
 
 /// The CBOR tag that is used for CIDs.
-const CBOR_TAGS_CID: u8 = 42;
+const CBOR_TAGS_CID: u64 = 42;
