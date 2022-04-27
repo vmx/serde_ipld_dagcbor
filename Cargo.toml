@@ -15,8 +15,7 @@ categories = ["encoding"]
 edition = "2018"
 
 [dependencies]
-#cbor4ii = { version = "0.2.12", default-features = false, features = ["use_alloc"] }
-cbor4ii = { git = "https://github.com/quininer/cbor4ii", default-features = false, features = ["use_alloc"] }
+cbor4ii = { version = "0.2.13", default-features = false, features = ["use_alloc"] }
 cid = { version = "0.8.0", default-features = false, features = ["serde-codec"] }
 scopeguard = "1.1.0"
 serde = { version = "1.0.14", default-features = false, features = ["alloc"] }
